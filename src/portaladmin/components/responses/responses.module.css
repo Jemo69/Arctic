@@ -15,7 +15,7 @@
 .headerActions { display: flex; align-items: center; gap: 10px; }
 .tableFrame { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 16px; background: var(--raised); }
 .scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scroll-padding-top: 40px; }
-.scroll:focus-visible { outline: 2px solid var(--line); outline-offset: -2px; }
+.scroll:focus-visible { outline: none; }
 .table { --respondent-width: 300px; width: 100%; min-width: calc(var(--respondent-width) + var(--answer-columns-width)); table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .respondentColumn { width: var(--respondent-width); }
 .table th, .table td { padding: 10px 18px; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line-soft) 75%, transparent); text-align: left; white-space: nowrap; vertical-align: middle; }
@@ -30,7 +30,7 @@
 .row:hover td, .row:focus-within td, .row.selected td { background: color-mix(in srgb, var(--accent) 4%, var(--raised)); }
 .open { display: flex; justify-content: flex-start; width: 100%; gap: 8px; padding: 0; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; text-align: left; }
 .open:hover { background: transparent; }
-.open:focus-visible { outline: 2px solid var(--line); outline-offset: 4px; }
+.open:focus-visible { outline: none; }
 .person { display: flex; flex: 1; align-items: center; gap: 11px; min-width: 0; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; flex: none; color: var(--ink); font-size: 11px; font-weight: 600; }
 .anonymousAvatar { display: grid; place-items: center; background: var(--field); color: var(--muted); }
@@ -144,5 +144,5 @@
 .columnCheck > svg { opacity: 0; }
 .columnList input:checked + .columnCheck { border-color: var(--ink); background: var(--ink); }
 .columnList input:checked + .columnCheck > svg { opacity: 1; }
-.columnList input:focus-visible + .columnCheck { outline: 2px solid var(--muted); outline-offset: 3px; }
+.columnList input:focus-visible + .columnCheck { outline: none; }
 .columnList label:has(input:checked) { background: color-mix(in srgb, var(--field) 65%, var(--raised)); }

@@ -51,6 +51,7 @@ export function PlaceholderField({
   placeholder,
   describedBy,
   maxLength,
+  required,
   inputRef,
   invalid,
 }: {
@@ -65,6 +66,7 @@ export function PlaceholderField({
   placeholder?: string;
   describedBy?: string;
   maxLength?: number;
+  required?: boolean;
   inputRef?: RefObject<HTMLTextAreaElement | HTMLInputElement | null>;
   invalid?: boolean;
 }) {
@@ -301,6 +303,7 @@ export function PlaceholderField({
     className,
     spellCheck,
     maxLength,
+    required,
     placeholder,
     "aria-describedby": describedBy,
     "aria-invalid": invalid || undefined,

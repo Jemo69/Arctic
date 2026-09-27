@@ -14,7 +14,8 @@ import {
   ungrant,
   type FormState,
 } from "../actions";
-import styles from "../people.module.css";
+import { permissionLabel } from "./permission-labels";
+import styles from "./person-detail.module.css";
 
 /** A team the person is on, as the screen needs it. */
 export type TeamRow = {
@@ -97,20 +98,22 @@ export function Teams({
   canManage: boolean;
 }) {
   const [state, submit, pending] = useActionState(joinTeam, {});
+  const [picked, setPicked] = useState("");
+  const selectedTeam = available.some(team => team.slug === picked) ? picked : "";
 
   return (
-    <section className="panel">
-      <h2>Teams</h2>
+    <section className={styles.panel}>
+      <header className={styles.sectionHead}><div><h2>Team memberships</h2><p>Each team provides its own set of permissions.</p></div><span className={styles.count}>{rows.length}</span></header>
 
       {rows.length === 0 ? (
-        <p className="meta">On no teams, so the baselines grant them nothing.</p>
+        <p className="meta">No team memberships yet.</p>
       ) : (
         <ul className={styles.memberships}>
           {rows.map((team) => (
             <li key={team.slug} className={team.expired ? styles.spent : undefined}>
               <div className={styles.rowline}>
                 <span>
-                  {team.name} <code>{team.slug}</code>
+                  <strong>{team.name}</strong>
                 </span>
                 <span>
                   <Expiry expiresAt={team.expiresAt} expired={team.expired} />
@@ -132,11 +135,12 @@ export function Teams({
                   consequence, and the consequence is the only thing that
                   matters about it. */}
               {team.permissions.length > 0 ? (
-                <ul className={styles.baseline}>
-                  {team.permissions.map((permission) => (
-                    <li key={permission}>{permission}</li>
-                  ))}
-                </ul>
+                <details className={styles.teamPermissions}>
+                  <summary>{team.permissions.length} {team.permissions.length === 1 ? "permission" : "permissions"}</summary>
+                  <ul className={styles.baseline}>
+                    {team.permissions.map(permission => <li key={permission}><span>{permissionLabel(permission)}</span><code>{permission}</code></li>)}
+                  </ul>
+                </details>
               ) : null}
             </li>
           ))}
@@ -144,12 +148,12 @@ export function Teams({
       )}
 
       {canManage && available.length > 0 ? (
-        <form action={submit} className="row">
+        <form action={submit} className={styles.addForm}>
           <input type="hidden" name="id" value={personId} />
 
           <div>
-            <label htmlFor="slug">Add to</label>
-            <Select id="slug" name="slug" defaultValue="">
+            <label htmlFor="slug">Add to a team</label>
+            <Select id="slug" name="slug" value={selectedTeam} onChange={event => setPicked(event.target.value)} required>
               <option value="" disabled>
                 Pick a team
               </option>
@@ -165,12 +169,12 @@ export function Teams({
             {/* Optional, and the reason it exists is the judge team: access
                 that dies the day after the event rather than when somebody
                 remembers. */}
-            <label htmlFor="teamExpiry">Until (optional)</label>
+            <label htmlFor="teamExpiry">Expires <span>Optional</span></label>
             <input id="teamExpiry" name="expiresAt" type="date" />
           </div>
 
-          <button type="submit" disabled={pending}>
-            {pending ? "Adding…" : "Add"}
+          <button type="submit" className={styles.primaryButton} disabled={pending || !selectedTeam}>
+            {pending ? "Adding…" : "Add to team"}
           </button>
         </form>
       ) : null}
@@ -193,28 +197,25 @@ export function Grants({
 }) {
   const [state, submit, pending] = useActionState(grant, {});
   const [picked, setPicked] = useState("");
+  const selectedPermission = available.some(permission => permission.value === picked) ? picked : "";
 
   const sensitive = available.some(
-    (permission) => permission.value === picked && permission.sensitive,
+    (permission) => permission.value === selectedPermission && permission.sensitive,
   );
 
   return (
-    <section className="panel">
-      <h2>Individual grants</h2>
-      <p className="meta" style={{ marginBottom: "0.75rem" }}>
-        Layered on top of the team baselines. Additive only — there is no way to
-        take a team&rsquo;s permission back from one person, and if they should
-        not have it they should not be on that team.
-      </p>
+    <section className={styles.panel}>
+      <header className={styles.sectionHead}><div><h2>Individual grants</h2><p>Additional permissions assigned directly to this person.</p></div><span className={styles.count}>{rows.length}</span></header>
+      <p className={styles.help}>Removing a grant keeps any access provided by their teams.</p>
 
       {rows.length === 0 ? (
-        <p className="meta">None. Everything they can do comes from a team.</p>
+        <p className="meta">No individual grants.</p>
       ) : (
-        <ul className="listing">
+        <ul className={styles.grants}>
           {rows.map((row) => (
             <li key={row.permission} className={row.expired ? styles.spent : undefined}>
               <span>
-                <code>{row.permission}</code>{" "}
+                <span className={styles.permissionName}>{permissionLabel(row.permission)}</span><code className={styles.key}>{row.permission}</code>{" "}
                 {row.sensitive ? <span className="pill sensitive">sensitive</span> : null}
               </span>
               <span>
@@ -237,15 +238,15 @@ export function Grants({
 
       {canGrant && available.length > 0 ? (
         <>
-          <form action={submit} className="row">
+          <form action={submit} className={styles.addForm}>
             <input type="hidden" name="id" value={personId} />
 
             <div>
-              <label htmlFor="permission">Grant</label>
+              <label htmlFor="permission">Permission</label>
               <Select
                 id="permission"
                 name="permission"
-                value={picked}
+                value={selectedPermission}
                 onChange={(event) => setPicked(event.target.value)}
               >
                 <option value="" disabled>
@@ -253,7 +254,7 @@ export function Grants({
                 </option>
                 {available.map((permission) => (
                   <option key={permission.value} value={permission.value}>
-                    {permission.value}
+                    {permissionLabel(permission.value)}
                     {permission.sensitive ? " — sensitive" : ""}
                   </option>
                 ))}
@@ -261,12 +262,12 @@ export function Grants({
             </div>
 
             <div>
-              <label htmlFor="grantExpiry">Until (optional)</label>
+              <label htmlFor="grantExpiry">Expires <span>Optional</span></label>
               <input id="grantExpiry" name="expiresAt" type="date" />
             </div>
 
-            <button type="submit" disabled={pending || picked === ""}>
-              {pending ? "Granting…" : "Grant"}
+            <button type="submit" className={styles.primaryButton} disabled={pending || !selectedPermission}>
+              {pending ? "Granting…" : "Grant permission"}
             </button>
           </form>
 
@@ -326,7 +327,7 @@ export function Revoke({
 
   if (isSelf) {
     return (
-      <section className={`panel ${styles.stop}`}>
+      <section className={`${styles.panel} ${styles.stop}`}>
         <h2>Revoke access</h2>
         <p className="meta">
           You cannot revoke yourself. Ask another admin.
@@ -336,7 +337,7 @@ export function Revoke({
   }
 
   return (
-    <section className={`panel ${styles.stop}`}>
+    <section className={`${styles.panel} ${styles.stop}`}>
       <h2>Revoke access</h2>
       <p className="meta" style={{ marginBottom: "0.75rem" }}>
         Takes them off the allowlist and ends every session they hold, including
@@ -405,10 +406,10 @@ export function Restore({
 
   return (
     // COPY: everything visible in this component needs sign-off.
-    <section className="panel">
+    <section className={styles.panel}>
       <h2>Restore access</h2>
       <p className="meta" style={{ marginBottom: "0.75rem" }}>
-        Puts them back on the allowlist with the teams and grants below, which
+        Puts them back on the allowlist with their saved teams and grants, which
         revoking left alone. They sign in again themselves — the sessions that
         were cut stay cut.
         {revokedAt ? ` Revoked ${revokedAt.slice(0, 10)}.` : null}
@@ -474,39 +475,36 @@ export function Unlink({
 
   return (
     // COPY: everything visible in this component needs sign-off.
-    <section className="panel">
-      <h2>Google account</h2>
-      <p className="meta" style={{ marginBottom: "0.75rem" }}>
-        Signing in the first time links a Google account to this address, and
-        only that account works afterwards. Unlink it if they cannot get into
-        it any more &mdash; they keep their teams, and the next sign-in links
-        whichever account they use.
+    <div className={styles.connectionControls}>
+      <p className={styles.connectionHelp}>
         {/* Said before the press, not after. Somebody unlinking their own
             account is about to be logged out, and finding that out by being
             logged out is a bad way to learn it. */}
-        {isSelf ? " This is your account, so you will be signed out." : null}
+        {isSelf ? "Unlinking signs you out on every device." : "Unlinking signs this organizer out on every device."}
+        {" "}Teams and permissions are kept.
       </p>
 
       {asked ? (
-        <form action={submit} className={styles.confirm}>
+        <form action={submit} className={`${styles.confirm} ${styles.connectionConfirm}`}>
           <input type="hidden" name="id" value={personId} />
           <p className={styles.asking} ref={question} tabIndex={-1}>
             Unlink the Google account on <strong>{email}</strong>?
+            <span className={styles.confirmDetail}>The next sign-in will connect the Google account that verifies this email address.</span>
           </p>
           <button type="submit" className="primary" disabled={pending}>
             {pending ? "Unlinking…" : "Yes, unlink"}
           </button>
-          <button type="button" onClick={() => setAsked(false)}>
+          <button type="button" disabled={pending} onClick={() => setAsked(false)}>
             Cancel
           </button>
         </form>
       ) : (
-        <button type="button" onClick={() => setAsked(true)}>
+        <button type="button" className={styles.disconnectButton} onClick={() => setAsked(true)}>
           Unlink Google account
         </button>
       )}
 
       {state.error ? <ErrorToast message={state.error} revision={state} /> : null}
-    </section>
+    </div>
   );
 }

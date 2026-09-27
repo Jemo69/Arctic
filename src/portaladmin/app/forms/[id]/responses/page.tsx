@@ -93,14 +93,6 @@ export default async function FormResponses({
             ) : undefined} />
         </div>
 
-        {/* Scaffolding, and says so. Goes with the fixtures in api.ts the moment
-            the endpoints land. */}
-        {first.mocked ? (
-          <p className="error">
-            Showing example data. The responses API is not available yet.
-          </p>
-        ) : null}
-
         {first.page.items.length === 0 ? (
           <NoResponses
             formId={id}

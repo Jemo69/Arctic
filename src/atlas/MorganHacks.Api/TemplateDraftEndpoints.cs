@@ -55,7 +55,8 @@ public static partial class TemplateEndpoints
         saved.BaseVersion ?? 0,
         saved.UpdatedAt,
         true,
-        previewHtml);
+        previewHtml,
+        saved.Content.ClickTracking);
 
     private static object DraftDetail(WorkingTemplate saved) => new
     {

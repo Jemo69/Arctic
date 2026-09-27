@@ -23,6 +23,7 @@ import { when } from "@/components/mail/types";
 import { Icon } from "@/components/ui/icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { emailDocument } from "./email-preview";
+import { thumbnailHtml } from "./thumbnail-html";
 import { DeleteTemplateDialog } from "./delete-template-dialog";
 import { NoTemplates } from "./no-templates";
 import styles from "./templates.module.css";
@@ -32,31 +33,21 @@ const updatedDate = new Intl.DateTimeFormat("en-US", {
   month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
 });
 
-function TemplateThumbnail({ html, name }: { html: string; name: string }) {
+function TemplateThumbnail({ html, name, priority }: { html: string; name: string; priority: boolean }) {
   const paper = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
-  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (!paper.current) return;
     const observer = new ResizeObserver(([entry]) => setScale(entry.contentRect.width / 600));
     observer.observe(paper.current);
-    const intersection = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) return;
-      setVisible(true);
-      intersection.disconnect();
-    }, { rootMargin: "200px" });
-    intersection.observe(paper.current);
-    return () => {
-      observer.disconnect();
-      intersection.disconnect();
-    };
+    return () => observer.disconnect();
   }, []);
 
   return <div ref={paper} className={styles.templatePreviewPaper}>
-    {visible ? <iframe className={styles.templatePreviewFrame} title={`${name} email preview`}
-      tabIndex={-1} loading="lazy" sandbox="" referrerPolicy="no-referrer"
-      style={{ transform: `scale(${scale})` }} srcDoc={emailDocument(html)} /> : null}
+    <iframe className={styles.templatePreviewFrame} title={`${name} email preview`}
+      tabIndex={-1} loading={priority ? "eager" : "lazy"} sandbox="" referrerPolicy="no-referrer"
+      style={{ transform: `scale(${scale})` }} srcDoc={emailDocument(thumbnailHtml(html, 640))} />
   </div>;
 }
 
@@ -68,13 +59,12 @@ function TemplateThumbnail({ html, name }: { html: string; name: string }) {
  * somebody looking for the announcement they wrote last week needs to be able
  * to see which lane it is in without opening it.
  */
-export function TemplatesTable({ templates, initialHiddenKeys, canDelete, canManage, personId, mocked }: {
+export function TemplatesTable({ templates, initialHiddenKeys, canDelete, canManage, personId }: {
   templates: TemplateRow[];
   initialHiddenKeys: string[];
   canDelete: boolean;
   canManage: boolean;
   personId: string;
-  mocked: boolean;
 }) {
   const selectButton = useRef<HTMLButtonElement>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -110,7 +100,7 @@ export function TemplatesTable({ templates, initialHiddenKeys, canDelete, canMan
         if (active) setHiddenReady(true);
         return;
       }
-      if (keys.length > 0 && !mocked) {
+      if (keys.length > 0) {
         try {
           legacyImport.current ??= setTemplateVisibility(keys, true);
           const result = await legacyImport.current;
@@ -128,7 +118,7 @@ export function TemplatesTable({ templates, initialHiddenKeys, canDelete, canMan
     };
     void importHidden();
     return () => { active = false; };
-  }, [storageKey, templates, mocked]);
+  }, [storageKey, templates]);
 
   const cancelSelection = useCallback(() => {
     setSelectionMode(false);
@@ -175,7 +165,7 @@ export function TemplatesTable({ templates, initialHiddenKeys, canDelete, canMan
   const hiddenCount = templates.filter((template) => hiddenKeys.has(template.key) && !removedKeys.has(template.key)).length;
 
   function changeVisibility() {
-    if (savingVisibility || mocked) return;
+    if (savingVisibility) return;
     const keys = selected.map((template) => template.key);
     const hidden = visibility !== "hidden";
     setNotice("");
@@ -239,7 +229,6 @@ export function TemplatesTable({ templates, initialHiddenKeys, canDelete, canMan
           </Link> : null}
         </div>
       </div>
-      {mocked ? <p className="error">Showing example data. The templates API is not available yet.</p> : null}
       {notice ? <p className={styles.selectionNotice} role="status">{notice}</p> : null}
       {deleting ? <DeleteTemplateDialog templates={deleting.templates} protectedCount={deleting.protectedCount}
         onClose={() => setDeleting(null)} onDeleted={(keys) => {
@@ -255,7 +244,7 @@ export function TemplatesTable({ templates, initialHiddenKeys, canDelete, canMan
           <strong key={selected.length}>{selected.length}</strong><span>selected</span>
         </div>
         <div className={styles.selectionActions}>
-          <button type="button" onClick={changeVisibility} disabled={savingVisibility || mocked || !hiddenReady}
+          <button type="button" onClick={changeVisibility} disabled={savingVisibility || !hiddenReady}
             title={visibility === "hidden" ? "Restore to your gallery" : "Hide from your gallery"}>
             <Icon icon={visibility === "hidden" ? ViewIcon : ViewOffIcon} size={14} />
             <span>{savingVisibility ? "Saving…" : visibility === "hidden" ? "Unhide" : "Hide"}</span>
@@ -345,14 +334,14 @@ export function TemplatesTable({ templates, initialHiddenKeys, canDelete, canMan
       <div className={styles.templateScroll} role="region" aria-label="Template gallery" tabIndex={0}>
       {templates.length === 0 ? <NoTemplates /> : visible.length > 0 ? (
         <ul className={styles.templateGrid} data-view={view} aria-label="Email templates">
-          {visible.map((template) => {
+          {visible.map((template, index) => {
             const name = template.name || template.key;
             const updated = template.updatedAt ? new Date(template.updatedAt) : null;
             const isSelected = selectedKeys.has(template.key);
             const content = <>
                   <div className={styles.templatePreview} aria-hidden="true">
                     {template.previewHtml && view === "grid" ? (
-                      <TemplateThumbnail html={template.previewHtml} name={name} />
+                      <TemplateThumbnail html={template.previewHtml} name={name} priority={index < 4} />
                     ) : (
                       <span className={styles.previewUnavailable}>
                         <Icon icon={Mail01Icon} size={30} strokeWidth={1.4} />

@@ -50,9 +50,7 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid var(--on-blue);
-  outline-offset: 3px;
-  border-radius: 3px;
+  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

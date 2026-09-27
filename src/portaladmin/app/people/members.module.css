@@ -113,7 +113,7 @@
   overscroll-behavior: contain;
   scroll-padding-top: 47px;
 }
-.tableScroll:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tableScroll:focus-visible { outline: none; }
 
 .pagination {
   display: flex;
@@ -144,7 +144,7 @@
 }
 .paginationActions button:hover:not(:disabled) { background: var(--members-field); }
 .paginationActions button:disabled { opacity: .3; cursor: default; }
-.paginationActions button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.paginationActions button:focus-visible { outline: none; }
 
 .table {
   width: 100%;

@@ -15,8 +15,7 @@
 }
 
 .badge:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
+  outline: none;
 }
 
 @media (max-width: 480px) {

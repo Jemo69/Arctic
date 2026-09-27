@@ -4,8 +4,8 @@ import { ErrorToast } from "@/components/ui/error-toast";
 
 import { useActionState } from "react";
 import { addNote } from "@/app/applicants/actions";
-import styles from "./applicants.module.css";
-import { stamp } from "./status";
+import styles from "./applicant-detail.module.css";
+import { ApplicantTime } from "./applicant-time";
 import type { Note } from "./types";
 
 /**
@@ -30,14 +30,14 @@ export function Notes({ id, notes }: { id: string; notes: Note[] }) {
   return (
     <div className={styles.notes}>
       {notes.length === 0 ? (
-        <p className="meta">No notes yet.</p>
+        <p className={styles.emptyNotes}>No notes yet.</p>
       ) : (
         <ul>
           {notes.map((note) => (
             <li key={note.id}>
               <div className={styles.byline}>
-                <span>{note.authorId.slice(0, 8)}</span>
-                <span>{stamp(note.createdAt)}</span>
+                <span>Organizer {note.authorId.slice(0, 8)}</span>
+                <ApplicantTime value={note.createdAt} />
               </div>
               <p className={styles.body}>{note.body}</p>
             </li>
@@ -54,12 +54,18 @@ export function Notes({ id, notes }: { id: string; notes: Note[] }) {
         <textarea
           id="body"
           name="body"
+          rows={3}
+          required
+          disabled={pending}
           maxLength={4000}
-          placeholder="Only organizers see this."
+          placeholder="Add context for your team…"
         />
-        <button type="submit" disabled={pending} style={{ marginTop: "0.5rem" }}>
-          {pending ? "Saving…" : "Add note"}
-        </button>
+        <div className={styles.composerFoot}>
+          <span>Only visible to organizers.</span>
+          <button type="submit" disabled={pending}>
+            {pending ? "Saving…" : "Add note"}
+          </button>
+        </div>
         {state.error ? <ErrorToast message={state.error} revision={state} /> : null}
       </form>
     </div>

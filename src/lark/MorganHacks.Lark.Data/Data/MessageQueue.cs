@@ -131,9 +131,10 @@ public sealed class MessageQueue(NpgsqlDataSource dataSource)
              )
             RETURNING m.id, m.campaign_id, m.to_email, m.priority, m.attempts,
                       m.rendered_subject, m.rendered_body_html, m.rendered_body_text,
-                      t.from_local || '@' || t.from_domain, t.from_name,
-                      t.reply_to,
-                      m.correlation_id, t.click_tracking
+                      COALESCE(c.email_settings->>'fromEmail', t.from_local || '@' || t.from_domain),
+                      COALESCE(c.email_settings->>'fromName', t.from_name),
+                      NULLIF(COALESCE(c.email_settings->>'replyTo', t.reply_to), ''),
+                      m.correlation_id, COALESCE(c.tracking_enabled, t.click_tracking)
             """;
 
         await using var cmd = dataSource.CreateCommand(sql);

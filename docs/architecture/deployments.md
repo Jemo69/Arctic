@@ -458,7 +458,6 @@ is set anywhere today.
 |---|---|---|---|
 | `API_ORIGIN` | all three frontends, on the server | **portaladmin only** | falls back to `http://localhost:5050`, so a deployed build proxies every `/api/*` call to itself |
 | `NEXT_PUBLIC_FORMS_ORIGIN` | portaladmin, inlined into the bundle | nowhere | share links point at `https://forms.morganhacks.com` — right in production, wrong in staging and locally |
-| `FORMS_PREVIEW` | portalforms, on the server | nowhere | the scaffolded preview form stays off, which is what you want |
 
 `API_ORIGIN` missing from portalweb and portalforms is
 [on the backlog](../backlog.md); it is currently masked by portalforms not

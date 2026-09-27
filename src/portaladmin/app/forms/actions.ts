@@ -70,17 +70,6 @@ export type SaveResult = {
 
 type ApiFailure = { error?: string; problems?: FormProblem[] };
 
-/**
- * What a 404 from one of the newer endpoints means.
- *
- * Unpublish and the deadline are being built on the API side while this screen
- * is being built on ours, so for a while either can answer 404. Told apart from
- * every other failure on purpose: "not there yet" is a different sentence from
- * "it went wrong", and only one of them is worth reporting to anybody. The rest
- * of the screen carries on working either way.
- */
-const NOT_SHIPPED = "Not available yet. Nothing changed.";
-
 async function readFailure(response: Response): Promise<SaveResult> {
   // 403 is the gate answering, not a fault, and naming the permission is what
   // turns "it doesn't work" into a request an admin can act on.
@@ -267,7 +256,7 @@ export async function unpublishForm(formId: string): Promise<SaveResult> {
   }
 
   if (response.status === 404) {
-    return { ok: false, error: NOT_SHIPPED, problems: [] };
+    return { ok: false, error: "This form could not be found. Refresh the page.", problems: [] };
   }
 
   if (!response.ok) {
@@ -309,7 +298,7 @@ export async function scheduleForm(
   }
 
   if (response.status === 404) {
-    return { ok: false, error: NOT_SHIPPED, problems: [] };
+    return { ok: false, error: "This form could not be found. Refresh the page.", problems: [] };
   }
 
   if (!response.ok) {

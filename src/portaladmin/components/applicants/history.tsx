@@ -1,5 +1,8 @@
-import styles from "./applicants.module.css";
-import { StatusPill, markClass, stamp } from "./status";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/ui/icon";
+import { ApplicantTime } from "./applicant-time";
+import styles from "./applicant-detail.module.css";
+import { family, label } from "./status";
 import type { Step } from "./types";
 
 /**
@@ -31,24 +34,26 @@ export function History({ steps }: { steps: Step[] }) {
     // the trail carries the same four families as the pills beside it.
     <ul className={styles.trail}>
       {steps.map((step, index) => (
-        <li key={`${step.at}-${index}`} className={markClass(step.to)}>
+        <li key={`${step.at}-${index}`} data-family={family(step.to)}>
           <div className={styles.step}>
             {step.from ? (
               <>
-                <StatusPill status={step.from} />
-                <span className="meta">to</span>
+                <span>{label(step.from)}</span>
+                <Icon icon={ArrowRight01Icon} size={14} />
+                <span className={styles.srOnly}>to</span>
               </>
             ) : null}
-            <StatusPill status={step.to} />
-            <span className={styles.note}>{stamp(step.at)}</span>
+            <strong>{label(step.to)}</strong>
           </div>
+
+          <div className={styles.activityTime}><ApplicantTime value={step.at} /></div>
 
           <div className={styles.actor}>
             {/* Null is a real answer and the honest one: the applicant did it
                 themselves, the expiry job did it, or somebody fixed the row by
                 hand. Putting a name against a decision nobody made would be
                 worse than admitting there is not one. */}
-            {step.actorId ? step.actorId.slice(0, 8) : "no organizer"}
+            {step.actorId ? `Organizer ${step.actorId.slice(0, 8)}` : "No organizer recorded"}
             {step.batchId ? " · part of a batch" : null}
           </div>
 

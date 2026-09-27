@@ -28,7 +28,7 @@
 .on .tallyCount { background: var(--ink); color: var(--raised); }
 .tableFrame { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--raised); }
 .scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scroll-padding-top: 44px; }
-.scroll:focus-visible { outline: 2px solid var(--line); outline-offset: -2px; }
+.scroll:focus-visible { outline: none; }
 .table { width: 100%; min-width: 930px; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .personColumn { width: 31%; }
 .schoolColumn { width: 28%; }
@@ -68,10 +68,9 @@
 .failed { color: var(--stop); font-size: 12px; }
 .more { min-height: 32px; padding: 6px 12px; border: 0; border-radius: 999px; background: var(--field); color: var(--ink); font-size: 12px; }
 .more:hover { background: var(--field-active); }
-.pending td > span { display: block; width: 75%; height: 10px; border-radius: 5px; background: var(--field); animation: pulse 1.2s ease-in-out infinite alternate; }
+.pending td { pointer-events: none; }
 .empty { flex: 1; min-height: 0; overflow-y: auto; }
-.page a:focus-visible, .page button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
-@keyframes pulse { to { opacity: 0.45; } }
+.page a:focus-visible, .page button:focus-visible { outline: none; }
 @media (max-width: 850px) {
   .controls { align-items: flex-start; flex-direction: column; gap: 14px; }
   .searchActions { width: 100%; }
@@ -95,4 +94,3 @@
   .table th, .table td { padding-inline: 14px; }
   .foot { gap: 10px; flex-wrap: wrap; padding-inline: 14px; }
 }
-@media (prefers-reduced-motion: reduce) { .pending td > span { animation: none; } }

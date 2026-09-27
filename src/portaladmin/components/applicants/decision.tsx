@@ -5,7 +5,7 @@ import { ErrorToast } from "@/components/ui/error-toast";
 import { Select } from "@/components/ui/select";
 import { useActionState } from "react";
 import { changeStatus } from "@/app/applicants/actions";
-import styles from "./applicants.module.css";
+import styles from "./applicant-detail.module.css";
 import { label } from "./status";
 import type { Status } from "./types";
 
@@ -49,6 +49,7 @@ export function Decision({
   canDecide: boolean;
 }) {
   const [state, submit, pending] = useActionState(changeStatus, {});
+  const needsReview = allowedNext.includes("under_review") && !allowedNext.includes("accepted");
 
   if (!canDecide) {
     return (
@@ -72,10 +73,10 @@ export function Decision({
       <input type="hidden" name="id" value={id} />
 
       <div>
-        <label htmlFor="status">Move to</label>
-        <Select id="status" name="status" defaultValue="">
+        <label htmlFor="status">Update status</label>
+        <Select id="status" name="status" defaultValue="" required disabled={pending} aria-describedby={needsReview ? "status-help" : undefined}>
           <option value="" disabled>
-            Pick a status
+            Choose a status
           </option>
           {allowedNext.map((status) => (
             <option key={status} value={status}>
@@ -83,15 +84,20 @@ export function Decision({
             </option>
           ))}
         </Select>
+        {needsReview ? (
+          <p id="status-help" className={styles.statusHelp}>
+            Move to Under review first. You can then accept, waitlist, or reject this application.
+          </p>
+        ) : null}
       </div>
 
       <div>
-        <label htmlFor="reason">Reason (optional)</label>
-        <textarea id="reason" name="reason" maxLength={500} />
+        <label htmlFor="reason">Reason <span className={styles.optional}>(optional)</span></label>
+        <textarea id="reason" name="reason" maxLength={500} rows={3} disabled={pending} placeholder="Add context for this decision…" />
       </div>
 
       <div>
-        <button type="submit" className="button primary" disabled={pending}>
+        <button type="submit" className={`button primary ${styles.decisionButton}`} disabled={pending}>
           {pending ? "Saving…" : "Change status"}
         </button>
       </div>

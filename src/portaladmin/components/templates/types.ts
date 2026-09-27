@@ -29,6 +29,7 @@ export type TemplateRow = {
   updatedAt: string | null;
   hasDraft?: boolean;
   previewHtml?: string | null;
+  clickTracking?: boolean;
 };
 
 /**
@@ -70,8 +71,8 @@ export type Template = {
 /**
  * What the body and subject come out as. Rendered by the API, never here.
  *
- * `notes` is what the allow-list removed on the way. Absent on an older API and
- * on the offline example data, so it is optional rather than an empty array --
+ * `notes` is what the allow-list removed on the way. Absent on an older API,
+ * so it is optional rather than an empty array --
  * a missing field must not render as "nothing was removed" when the truth is
  * "nobody was asked".
  */

@@ -171,9 +171,8 @@
 
 .surface :global(input:not([type="checkbox"]):not([type="radio"]):focus), .surface select:focus, .surface textarea:focus {
   outline: 0;
-  border-color: var(--control-ring);
   background: var(--control-fill);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--control-ring) 14%, transparent);
+  box-shadow: none;
 }
 .surface :global(.question.wrong .prompt-text), .surface :global(.question.wrong .needed) { color: var(--stop); }
 .surface :global(input:not([type="checkbox"]):not([type="radio"])[aria-invalid="true"]), .surface select:global([aria-invalid="true"]), .surface textarea:global([aria-invalid="true"]) {
@@ -187,7 +186,7 @@
   cursor: not-allowed;
 }
 .surface :global(input:autofill) { box-shadow: 0 0 0 1000px var(--control-fill) inset; -webkit-text-fill-color: var(--ink); }
-.surface :global(input:autofill:focus) { box-shadow: 0 0 0 1000px var(--control-fill) inset, 0 0 0 3px color-mix(in srgb, var(--control-ring) 14%, transparent); }
+.surface :global(input:autofill:focus) { box-shadow: 0 0 0 1000px var(--control-fill) inset; }
 .surface :global(.choices) { gap: 8px; margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .surface :global(.choices .choice), .surface :global(.agreement) {
   align-items: flex-start;
@@ -208,7 +207,7 @@
   background: var(--control-fill);
   border-color: var(--control-border);
 }
-.surface :global(.choice:has(input:focus-visible)) { outline: 2px solid var(--focus); outline-offset: 3px; }
+.surface :global(.choice:has(input:focus-visible)) { outline: none; }
 .surface :global(.choice input) { width: 18px; height: 18px; margin: 2px 0 0; border: 1.5px solid #8a94a3; border-radius: 4px; background: var(--paper); }
 .surface :global(.choices .choice input[type="checkbox"]) { border-radius: 4px; }
 .surface :global(.choice input[type="radio"]) { border-radius: 50%; }
@@ -346,6 +345,7 @@
   --card-ui-font: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   line-height: 1.5;
 }
+.cards[data-color-scheme="light"] { --paper: color-mix(in srgb, var(--form-ink) 5%, var(--form-background)); }
 .cards[data-color-scheme="dark"] { --paper: color-mix(in srgb, var(--form-ink) 6%, var(--form-background)); }
 .cards[data-background="#000000"] { --paper: #1f1f1f; }
 .cards, .cards:has(:global(.page)) {

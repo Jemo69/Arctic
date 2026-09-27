@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using MorganHacks.Identity.Services;
 using MorganHacks.Lark.Data.Data;
+using MorganHacks.Lark.Data.Domain;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -45,6 +46,223 @@ public class CampaignTests(ApplicationsDatabase db)
     }
 
     // ------------------------------------------------------------- drafting ---
+
+    private static Dictionary<string, object?> CampaignSettingsBody(object? segment, int revision = 0) => new()
+    {
+        ["name"] = "Updated campaign",
+        ["subject"] = "Hello {{firstName}}",
+        ["previewText"] = "A preview for {{firstName}}",
+        ["fromName"] = "Events Team",
+        ["fromEmail"] = "events@news.example.invalid",
+        ["replyTo"] = "replies@example.test",
+        ["trackingEnabled"] = true,
+        ["segment"] = segment,
+        ["revision"] = revision,
+    };
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_draft_can_start_without_an_audience_and_requires_one_before_sending(bool omitSegment)
+    {
+        var (_, author) = await Comms();
+        var (_, approver) = await Comms();
+        var key = await TemplateWith("Hello {{firstName}}", "<p>Hello {{firstName}}</p>", "Hello {{firstName}}");
+        var body = new Dictionary<string, object?> { ["name"] = "New campaign", ["templateKey"] = key };
+        if (!omitSegment) body["segment"] = null;
+        var created = await Client().SendAsync(Request(HttpMethod.Post, "/admin/campaigns", author, body));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var id = Id(await Body(created));
+        var saved = await Body(await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}", author)));
+        Assert.Equal(JsonValueKind.Null, saved.GetProperty("campaign").GetProperty("segment").ValueKind);
+        Assert.Equal(HttpStatusCode.OK, (await Client().SendAsync(Request(HttpMethod.Put,
+            $"/admin/campaigns/{id}", author, CampaignSettingsBody(null)))).StatusCode);
+        var preview = await Preview(id, author);
+        Assert.Equal(HttpStatusCode.BadRequest, preview.StatusCode);
+        Assert.Contains("Choose an audience", (await Body(preview)).GetProperty("error").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest, (await Send(id, approver)).StatusCode);
+        Assert.Equal(0, await MessageCount(id));
+
+        var eventId = await db.AddEventAsync();
+        await Applicant(eventId, Unique("new-campaign"), "accepted");
+        Assert.Equal(HttpStatusCode.OK, (await Client().SendAsync(Request(HttpMethod.Put,
+            $"/admin/campaigns/{id}", author, CampaignSettingsBody(InStatus(eventId, "accepted"), 1)))).StatusCode);
+        Assert.Equal(1, (await Body(await Preview(id, author))).GetProperty("recipientCount").GetInt32());
+        Assert.Equal(HttpStatusCode.OK, (await Send(id, approver)).StatusCode);
+        Assert.Equal(1, await MessageCount(id));
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"type\":\"explicitList\",\"emails\":[]}")]
+    public async Task An_invalid_audience_is_rejected_rather_than_treated_as_unselected(string json)
+    {
+        var (_, author) = await Comms();
+        var key = await TemplateWith("Hello", "<p>Hello</p>", "Hello");
+        using var audience = JsonDocument.Parse(json);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Create(author, audience.RootElement, key)).StatusCode);
+        var created = await Client().SendAsync(Request(HttpMethod.Post, "/admin/campaigns", author,
+            new { name = "New campaign", templateKey = key }));
+        var id = Id(await Body(created));
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client().SendAsync(Request(HttpMethod.Put,
+            $"/admin/campaigns/{id}", author, CampaignSettingsBody(audience.RootElement)))).StatusCode);
+        Assert.Equal(0, await MessageCount(id));
+    }
+
+    [Fact]
+    public async Task Campaign_settings_survive_reload_preview_and_queue_without_changing_the_template()
+    {
+        await DrainAsync();
+        var (_, author) = await Comms();
+        var (_, approver) = await Comms();
+        var eventId = await db.AddEventAsync();
+        await Applicant(eventId, Unique("settings"), "accepted");
+        var key = await TemplateWith("Original subject", "<p>Hello {{firstName}}</p>", "Hello {{firstName}}");
+        var segment = InStatus(eventId, "accepted");
+        var id = Id(await Body(await Create(author, segment, key)));
+        var update = await Client().SendAsync(Request(HttpMethod.Put, $"/admin/campaigns/{id}", author, CampaignSettingsBody(segment)));
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var read = await Body(await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}", author)));
+        Assert.Equal(1, read.GetProperty("campaign").GetProperty("revision").GetInt32());
+        Assert.Equal("Events Team", read.GetProperty("settings").GetProperty("fromName").GetString());
+        Assert.Equal("events@news.example.invalid", read.GetProperty("analytics").GetProperty("content").GetProperty("fromEmail").GetString());
+        var rendered = await Body(await Preview(id, author));
+        Assert.Equal(1, rendered.GetProperty("revision").GetInt32());
+        Assert.Equal("Hello Ada", rendered.GetProperty("renders")[0].GetProperty("subject").GetString());
+        Assert.Contains("A preview for Ada", rendered.GetProperty("renders")[0].GetProperty("html").GetString()!);
+        Assert.Equal("Original subject", (await new TemplateStore(db.DataSource).FindAsync(key))!.Subject);
+        Assert.Equal(HttpStatusCode.OK, (await Send(id, approver)).StatusCode);
+        await using (var templateChange = db.DataSource.CreateCommand("UPDATE notify.templates SET from_name='Changed elsewhere', from_local='other' WHERE key=@key"))
+        {
+            templateChange.Parameters.AddWithValue("key", key);
+            await templateChange.ExecuteNonQueryAsync();
+        }
+        var message = Assert.Single(await new MessageQueue(db.DataSource).ClaimAsync("settings-test", 100), m => m.CampaignId == id);
+        Assert.Equal("Hello Ada", message.Subject);
+        Assert.Contains("Events Team", message.From);
+        Assert.Contains("events@news.example.invalid", message.From);
+        Assert.Equal("replies@example.test", message.ReplyTo);
+        Assert.True(message.ClickTracking);
+        Assert.Equal(HttpStatusCode.Conflict, (await Client().SendAsync(Request(HttpMethod.Put,
+            $"/admin/campaigns/{id}", author, CampaignSettingsBody(segment, 1)))).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("subject", "Injected\r\nBcc: other@example.test")]
+    [InlineData("subject", "")]
+    [InlineData("fromName", "Bad\r\nSender")]
+    [InlineData("fromEmail", "someone@another-domain.example")]
+    [InlineData("fromEmail", "Name <events@news.example.invalid>")]
+    [InlineData("replyTo", "not-an-email")]
+    [InlineData("previewText", "Bad\npreview")]
+    public async Task Invalid_campaign_headers_are_refused(string field, string value)
+    {
+        var (_, author) = await Comms();
+        var segment = InStatus(await db.AddEventAsync(), "accepted");
+        var id = Id(await Body(await Create(author, segment)));
+        var body = CampaignSettingsBody(segment);
+        body[field] = value;
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client().SendAsync(Request(HttpMethod.Put,
+            $"/admin/campaigns/{id}", author, body))).StatusCode);
+        Assert.Equal(0, (await new CampaignStore(db.DataSource).FindAsync(id))!.Revision);
+    }
+
+    [Fact]
+    public async Task Editing_invalidates_old_previews_and_cannot_overwrite_a_newer_draft()
+    {
+        var (_, author) = await Comms();
+        var (_, approver) = await Comms();
+        var eventId = await db.AddEventAsync();
+        await Applicant(eventId, Unique("revision"), "accepted");
+        var segment = InStatus(eventId, "accepted");
+        var id = Id(await Body(await Create(author, segment)));
+        var body = CampaignSettingsBody(segment);
+        Assert.Equal(HttpStatusCode.OK, (await Client().SendAsync(Request(HttpMethod.Put, $"/admin/campaigns/{id}", author, body))).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await Client().SendAsync(Request(HttpMethod.Put, $"/admin/campaigns/{id}", author, body))).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await Client().SendAsync(Request(HttpMethod.Post,
+            $"/admin/campaigns/{id}/send", approver, new { revision = 0 }))).StatusCode);
+        var queued = await new CampaignStore(db.DataSource).QueueAsync(id, Guid.NewGuid(), [], expectedRevision: 0);
+        Assert.Equal(QueueResult.Changed, queued.Result);
+        Assert.Equal(0, await MessageCount(id));
+    }
+
+    [Fact]
+    public async Task Campaign_editing_requires_template_permission_and_an_independent_sender()
+    {
+        var (_, author) = await Comms();
+        var (_, editor) = await Comms();
+        var eventId = await db.AddEventAsync();
+        await Applicant(eventId, Unique("edited"), "accepted");
+        var segment = InStatus(eventId, "accepted");
+        var id = Id(await Body(await Create(author, segment)));
+        var reader = await db.AddPersonAsync(Unique("settings-reader"));
+        await db.GrantAsync(reader, "email.view_stats");
+        var cookie = await SignIn(reader);
+        var read = await Body(await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}", cookie)));
+        Assert.Equal(JsonValueKind.Null, read.GetProperty("settings").ValueKind);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Client().SendAsync(Request(HttpMethod.Put,
+            $"/admin/campaigns/{id}", cookie, CampaignSettingsBody(segment)))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Client().SendAsync(Request(HttpMethod.Put,
+            $"/admin/campaigns/{id}", editor, CampaignSettingsBody(segment)))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(id, editor)).StatusCode);
+        Assert.Equal(0, await MessageCount(id));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Campaign_tracking_choice_survives_reload_queueing_and_records_only_opted_in_activity(bool enabled)
+    {
+        await DrainAsync();
+        var (_, author) = await Comms();
+        var (_, approver) = await Comms();
+        var eventId = await db.AddEventAsync();
+        await Applicant(eventId, Unique("tracking"), "accepted");
+        var key = await TemplateWith("Campaign tracking", "<a href=\"https://example.test/hello\">Hello</a>", "https://example.test/hello");
+        using var response = await Client().SendAsync(Request(HttpMethod.Post, "/admin/campaigns", author,
+            new { name = "Tracking choice", templateKey = key, segment = InStatus(eventId, "accepted"), trackingEnabled = enabled }));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var id = Id(await Body(response));
+        await using (var update = db.DataSource.CreateCommand("UPDATE notify.templates SET click_tracking = @opposite WHERE key = @key"))
+        {
+            update.Parameters.AddWithValue("opposite", !enabled);
+            update.Parameters.AddWithValue("key", key);
+            await update.ExecuteNonQueryAsync();
+        }
+        var saved = await Body(await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}", author)));
+        Assert.Equal(enabled, saved.GetProperty("campaign").GetProperty("trackingEnabled").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, (await Send(id, approver)).StatusCode);
+        var queue = new MessageQueue(db.DataSource);
+        var claimed = Assert.Single(await queue.ClaimAsync("tracking-test", 100), message => message.CampaignId == id);
+        Assert.Equal(enabled, claimed.ClickTracking);
+        var tracking = new LinkTrackingStore(db.DataSource);
+        var prepared = await tracking.PrepareAsync(claimed, "https://api.example.test");
+        await queue.MarkSentAsync(claimed.Id, $"tracking-test-{Guid.NewGuid():N}");
+        using var visitor = _app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        if (enabled)
+        {
+            var link = Assert.Single(EmailLinks.Destinations(prepared.BodyHtml));
+            Assert.Contains("/email/click/", link);
+            Assert.Equal(HttpStatusCode.Redirect, (await visitor.GetAsync(new Uri(link).PathAndQuery)).StatusCode);
+            await using var token = db.DataSource.CreateCommand("SELECT id FROM notify.message_tracking WHERE message_id=@id");
+            token.Parameters.AddWithValue("id", claimed.Id);
+            var openId = (Guid)(await token.ExecuteScalarAsync())!;
+            Assert.Contains($"/email/open/{openId:N}", prepared.BodyHtml);
+            Assert.Equal(HttpStatusCode.OK, (await visitor.GetAsync($"/email/open/{openId:N}")).StatusCode);
+        }
+        else
+        {
+            Assert.Equal(claimed.BodyHtml, prepared.BodyHtml);
+            Assert.DoesNotContain("/email/open/", prepared.BodyHtml);
+        }
+        var report = await Body(await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}", author)));
+        var analytics = report.GetProperty("analytics");
+        Assert.Equal(enabled, analytics.GetProperty("clickTrackingEnabled").GetBoolean());
+        Assert.Equal(1, analytics.GetProperty("sentEmails").GetInt64());
+        Assert.Equal(enabled ? 1 : 0, analytics.GetProperty("totalClicks").GetInt64());
+        Assert.Equal(enabled ? 1 : 0, analytics.GetProperty("engagement").GetProperty("totalOpens").GetInt64());
+        Assert.Equal(enabled ? 1 : 0, analytics.GetProperty("engagement").GetProperty("openTrackedEmails").GetInt64());
+    }
 
     [Fact]
     public async Task A_draft_mails_nobody()
@@ -244,6 +462,82 @@ public class CampaignTests(ApplicationsDatabase db)
     {
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await Client().GetAsync("/admin/campaigns")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Recipient_pages_cover_the_frozen_list_without_overlap_and_clamp_the_last_page()
+    {
+        var (_, author) = await Comms();
+        var (_, sender) = await Comms();
+        var addresses = Enumerable.Range(0, 23).Select(i => $"recipient-{i:D2}@example.test").ToArray();
+        var id = Id(await Body(await Create(author, new { type = "explicitList", emails = addresses })));
+        Assert.Equal(HttpStatusCode.OK, (await Send(id, sender)).StatusCode);
+        var other = Id(await Body(await Create(author, new { type = "explicitList", emails = new[] { "other@example.test" } })));
+        Assert.Equal(HttpStatusCode.OK, (await Send(other, sender)).StatusCode);
+
+        var seen = new List<string>();
+        for (var page = 1; page <= 3; page++)
+        {
+            var response = await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}/recipients?page={page}", author));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await Body(response);
+            Assert.Equal(23, body.GetProperty("total").GetInt32());
+            Assert.Equal(10, body.GetProperty("pageSize").GetInt32());
+            Assert.Equal(page, body.GetProperty("page").GetInt32());
+            var items = body.GetProperty("items").EnumerateArray().ToArray();
+            Assert.Equal(page < 3 ? 10 : 3, items.Length);
+            Assert.All(items, item => Assert.Equal(JsonValueKind.Null, item.GetProperty("firstName").ValueKind));
+            seen.AddRange(items.Select(item => item.GetProperty("email").GetString()!));
+        }
+        Assert.Equal(addresses, seen);
+        var last = await Body(await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}/recipients?page=2147483647", author)));
+        Assert.Equal(3, last.GetProperty("page").GetInt32());
+        Assert.Equal(3, last.GetProperty("items").GetArrayLength());
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}/recipients?page=0", author))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{Guid.NewGuid()}/recipients", author))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Recipient_names_are_frozen_when_queued_and_dates_come_from_the_message()
+    {
+        var (_, author) = await Comms();
+        var (_, sender) = await Comms();
+        var eventId = await db.AddEventAsync();
+        var email = Unique("snapshot");
+        await Applicant(eventId, email, "accepted");
+        var id = Id(await Body(await Create(author, InStatus(eventId, "accepted"))));
+        Assert.Equal(HttpStatusCode.OK, (await Send(id, sender)).StatusCode);
+        await using var command = db.DataSource.CreateCommand("""
+            UPDATE applications.applications SET first_name = 'Changed', last_name = 'Later' WHERE email = @email;
+            UPDATE notify.messages SET status = 'sent', sent_at = '2026-09-26T12:30:00Z' WHERE campaign_id = @id
+            """);
+        command.Parameters.AddWithValue("email", email);
+        command.Parameters.AddWithValue("id", id);
+        await command.ExecuteNonQueryAsync();
+
+        var body = await Body(await Client().SendAsync(Request(HttpMethod.Get, $"/admin/campaigns/{id}/recipients", author)));
+        var recipient = Assert.Single(body.GetProperty("items").EnumerateArray());
+        Assert.Equal("Ada", recipient.GetProperty("firstName").GetString());
+        Assert.Equal("Lovelace", recipient.GetProperty("lastName").GetString());
+        Assert.Equal(DateTimeOffset.Parse("2026-09-26T12:30:00Z"), recipient.GetProperty("sentAt").GetDateTimeOffset());
+    }
+
+    [Fact]
+    public async Task Recipient_pages_require_both_permissions_and_empty_drafts_are_truthful()
+    {
+        var (_, author) = await Comms();
+        var id = Id(await Body(await Create(author, new { type = "explicitList", emails = new[] { "not-sent@example.test" } })));
+        var path = $"/admin/campaigns/{id}/recipients";
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Client().GetAsync(path)).StatusCode);
+        foreach (var permission in new[] { "email.view_stats", "email.manage_templates" })
+        {
+            var person = await db.AddPersonAsync(Unique("single-permission"));
+            await db.GrantAsync(person, permission);
+            Assert.Equal(HttpStatusCode.Forbidden, (await Client().SendAsync(Request(HttpMethod.Get, path, await SignIn(person)))).StatusCode);
+        }
+        var empty = await Body(await Client().SendAsync(Request(HttpMethod.Get, path, author)));
+        Assert.Equal(0, empty.GetProperty("total").GetInt32());
+        Assert.Empty(empty.GetProperty("items").EnumerateArray());
     }
 
     // ------------------------------------------------------------ the big one ---

@@ -7,13 +7,17 @@ import {
   type PersonDetail,
 } from "@/lib/api";
 import { Shell } from "../../shell";
-import styles from "../people.module.css";
+import { ArrowLeft01Icon, Mail01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/ui/icon";
+import { Avatar } from "@/components/ui/avatar";
+import { PersonTabs } from "./person-tabs";
+import { GoogleAccount } from "./google-account";
+import styles from "./person-detail.module.css";
 import {
   Grants,
   Restore,
   Revoke,
   Teams,
-  Unlink,
   type GrantRow,
   type TeamRow,
 } from "./controls";
@@ -195,22 +199,51 @@ export default async function PersonPage({
 
   return (
     <Shell personId={viewer.personId}>
-      <Link href="/people" className="back">
-        ← People
-      </Link>
+      <div className={styles.page}>
+      <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+        <Link href="/people"><Icon icon={ArrowLeft01Icon} size={17} />People</Link>
+        <span>/</span><span>Profile & access</span>
+      </nav>
+      <header className={styles.profileHeader}>
+        <div className={styles.profile}>
+          <Avatar name={person.fullName || person.email} email={person.email} avatarUrl={person.avatarUrl} className={styles.avatar} appearance="soft" />
+          <div className={styles.profileCopy}>
+            <div className={styles.profileTitle}>
+              <h1>{person.fullName?.trim() || person.email}</h1>
+              <span className={styles.accountStatus} data-revoked={person.revoked || undefined}>{person.revoked ? "Revoked" : "Active"}</span>
+            </div>
+            <div className={styles.identity}>
+              <span className={styles.kind}>{person.kind}</span>
+              {person.fullName?.trim() ? <span><Icon icon={Mail01Icon} size={14} />{person.email}</span> : null}
+              {person.id === viewer.personId ? <span>Your account</span> : null}
+              {person.revoked && person.revokedAt ? <span>Revoked {person.revokedAt.slice(0, 10)}</span> : null}
+            </div>
+          </div>
+        </div>
+        <dl className={styles.profileStats}>
+          <div><dt>Active teams</dt><dd>{liveTeams.length}</dd></div>
+          <div><dt>Individual grants</dt><dd>{liveGrants.length}</dd></div>
+        </dl>
+      </header>
 
-      <h1 className={styles.address}>{person.email}</h1>
-      <p className={styles.identity}>
-        {person.kind}
-        {" · "}
-        <span className={person.revoked ? "pill revoked" : "pill active"}>
-          {person.revoked ? "Revoked" : "Active"}
-        </span>
-        {person.revoked && person.revokedAt ? (
-          <span className="meta"> since {person.revokedAt.slice(0, 10)}</span>
-        ) : null}
-      </p>
-
+      <PersonTabs permissionCount={effective.length}
+        permissions={<Effective rows={effective} revoked={person.revoked} />}
+        teams={<div className={styles.management}>
+          <Teams personId={person.id} rows={teams} available={catalogue.teams.filter(team => !onTeams.has(team.slug))} canManage={mine.has("people.manage_teams")} />
+          <Grants personId={person.id} rows={grants} available={catalogue.permissions.filter(p => !held.has(p.value))} canGrant={mine.has("people.grant_permissions")} />
+        </div>}
+        account={<div className={styles.accountContent}>
+          <div className={styles.accountGrid}>
+          <section className={styles.panel}>
+            <header className={styles.sectionHead}><div><h2>Account details</h2><p>Your organizer profile and access.</p></div></header>
+            <dl className={styles.accountDetails}>
+              <div><dt>Email address</dt><dd>{person.email}</dd></div>
+              <div><dt>Account type</dt><dd className={styles.kind}>{person.kind}</dd></div>
+              <div><dt>Access</dt><dd>{person.revoked ? "Revoked" : "Active"}</dd></div>
+            </dl>
+          </section>
+          {person.kind === "organizer" ? <GoogleAccount personId={person.id} email={person.email} linked={person.linked}
+            isSelf={person.id === viewer.personId} revoked={person.revoked} canManage={mine.has("people.manage_teams")} /> : null}
       {/*
         Only for somebody who can actually sign in. A revoked person has a
         message to send them too, and it is not this one — theirs is that they
@@ -226,41 +259,12 @@ export default async function PersonPage({
         <Invite email={person.email} />
       ) : null}
 
-      <Effective rows={effective} />
-
-      <div className="columns">
-        <Teams
-          personId={person.id}
-          rows={teams}
-          available={catalogue.teams.filter((team) => !onTeams.has(team.slug))}
-          canManage={mine.has("people.manage_teams")}
-        />
-
-        <Grants
-          personId={person.id}
-          rows={grants}
-          available={catalogue.permissions.filter((p) => !held.has(p.value))}
-          canGrant={mine.has("people.grant_permissions")}
-        />
-      </div>
-
       {/*
         One panel or the other, never both and never neither. A revoked person
         used to have no control at all on this page, which is how revoking came
         to be one-way: the screen that knows they are locked out was also the
         screen with nothing to do about it.
       */}
-      {/* Only when there is a binding to take away. On somebody who has never
-          signed in there is nothing to unlink, and a button that does nothing
-          is a button somebody presses twice. */}
-      {mine.has("people.manage_teams") && person.linked ? (
-        <Unlink
-          personId={person.id}
-          email={person.email}
-          isSelf={person.id === viewer.personId}
-        />
-      ) : null}
-
       {mine.has("people.manage_teams") ? (
         person.revoked ? (
           <Restore
@@ -276,6 +280,10 @@ export default async function PersonPage({
           />
         )
       ) : null}
+          </div>
+        </div>}
+      />
+      </div>
     </Shell>
   );
 }

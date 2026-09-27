@@ -1,0 +1,7 @@
+.region { min-width: 0; animation: reveal 180ms ease-out both; }
+.shape { position: relative; display: block; flex-shrink: 0; max-width: 100%; overflow: hidden; isolation: isolate; background: color-mix(in srgb, var(--ink) 7%, var(--paper)); user-select: none; }
+.shape::after { position: absolute; inset: 0; content: ""; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--paper) 64%, transparent), transparent); transform: translateX(-100%); animation: shimmer 2.1s ease-in-out infinite; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@keyframes shimmer { 0% { transform: translateX(-100%); } 70%, 100% { transform: translateX(100%); } }
+@keyframes reveal { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .region, .shape::after { animation: none; } .shape::after { display: none; } }

@@ -1,7 +1,5 @@
 import { cookies } from "next/headers";
 
-// Scaffolding. Goes with the block in loadForm below. See lib/preview.ts.
-import { previewForm } from "./preview";
 
 /**
  * Where the API lives as far as the server is concerned.
@@ -188,18 +186,6 @@ async function sessionHeader(): Promise<Record<string, string>> {
  * seven-character codes are real — and so does this page.
  */
 export async function loadForm(code: string, { anonymous = false }: { anonymous?: boolean } = {}): Promise<PublicForm | null> {
-  /* ---- Scaffolding. Delete this block and the import with lib/preview.ts. --
-   *
-   * A made-up form with sections in it, so the multi-step page can be looked at
-   * before the API can serve one. Returns null unless both of its locks are
-   * open, and one of them is `NODE_ENV !== "production"`, so a shipped build
-   * never gets past this line. See lib/preview.ts.
-   */
-  const preview = previewForm(code);
-  if (preview) {
-    return preview;
-  }
-  /* ---- End of the scaffolding. ------------------------------------------ */
 
   let response: Response;
 

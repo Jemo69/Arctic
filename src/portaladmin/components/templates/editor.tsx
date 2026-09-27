@@ -4,6 +4,7 @@ import { ErrorToast } from "@/components/ui/error-toast";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { EditorWorkspaceSkeleton } from "@/components/ui/page-skeleton";
 import { useSearchParams } from "next/navigation";
 import { useSidebarState } from "@/app/sidebar-state";
 import { EditorHeader } from "./editor-header";
@@ -21,7 +22,7 @@ import type { EditorStep, Placeholder, Template } from "./types";
 
 const loadDesignWorkspace = () => import("./design-workspace");
 const DesignWorkspace = dynamic(() => loadDesignWorkspace().then((module) => module.DesignWorkspace), {
-  loading: () => <p className={styles.editorLoading} role="status">Opening editor…</p>,
+  loading: () => <EditorWorkspaceSkeleton />,
 });
 
 /**

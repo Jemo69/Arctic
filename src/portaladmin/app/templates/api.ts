@@ -17,11 +17,11 @@ import type {
  */
 
 export type ListRead =
-  | { ok: true; items: TemplateRow[]; hiddenKeys: string[]; mocked: boolean }
+  | { ok: true; items: TemplateRow[]; hiddenKeys: string[] }
   | { ok: false; status: number; error: string };
 
 export type OneRead =
-  | { ok: true; template: Template; mocked: boolean }
+  | { ok: true; template: Template }
   | { ok: false; status: number; error: string };
 
 /**
@@ -48,7 +48,7 @@ export type PreviewRead =
  * not knowing which placeholders resolve is being told the wrong ones.
  */
 export type PlaceholderRead =
-  | { ok: true; items: Placeholder[]; mocked: boolean }
+  | { ok: true; items: Placeholder[] }
   | { ok: false; error: string };
 
 /**
@@ -112,10 +112,6 @@ export async function readTemplates(includeDrafts = false, includePreviews = fal
     return { ok: false, status: 0, error: "The API could not be reached." };
   }
 
-  if (response.status === 404 && EXAMPLES) {
-    return { ok: true, items: exampleList(), hiddenKeys: [], mocked: true };
-  }
-
   if (!response.ok) {
     return {
       ok: false,
@@ -125,7 +121,7 @@ export async function readTemplates(includeDrafts = false, includePreviews = fal
   }
 
   const { templates, hiddenKeys = [] } = (await response.json()) as { templates: TemplateRow[]; hiddenKeys?: string[] };
-  return { ok: true, items: templates, hiddenKeys, mocked: false };
+  return { ok: true, items: templates, hiddenKeys };
 }
 
 /** One template, with its body and everything rendered from it. */
@@ -137,13 +133,6 @@ export async function readTemplate(key: string): Promise<OneRead> {
     return { ok: false, status: 0, error: "The API could not be reached." };
   }
 
-  if (response.status === 404 && EXAMPLES) {
-    const template = exampleOne(key);
-    if (template) {
-      return { ok: true, template, mocked: true };
-    }
-  }
-
   if (!response.ok) {
     return {
       ok: false,
@@ -153,7 +142,7 @@ export async function readTemplate(key: string): Promise<OneRead> {
   }
 
   const template = (await response.json()) as Template;
-  return { ok: true, template, mocked: false };
+  return { ok: true, template };
 }
 
 /** Writes a template that did not exist. */
@@ -258,10 +247,6 @@ async function write(
     return { ok: false, error: "The API could not be reached." };
   }
 
-  if (response.status === 404 && EXAMPLES) {
-    return exampleWrite(draft);
-  }
-
   if (!response.ok) {
     return {
       ok: false,
@@ -319,10 +304,6 @@ export async function renderPreview(input: {
     return { ok: false, error: "The API could not be reached." };
   }
 
-  if (response.status === 404 && EXAMPLES) {
-    return { ok: true, rendered: examplePreview(input) };
-  }
-
   if (!response.ok) {
     return {
       ok: false,
@@ -378,7 +359,7 @@ export async function readPlaceholders(
     return { ok: false, error: "Placeholders could not be loaded." };
   }
 
-  return { ok: true, items: named(body.placeholders), mocked: false };
+  return { ok: true, items: named(body.placeholders) };
 }
 
 /**
@@ -420,102 +401,4 @@ function named(value: unknown): Placeholder[] {
   }
 
   return items;
-}
-
-// ---------------------------------------------------------------------------
-// Example data, until the API is there
-// ---------------------------------------------------------------------------
-
-/*
- * Everything below this line is scaffolding and is meant to be deleted.
- *
- * The templates endpoints are being built in parallel with these screens.
- * Rather than ship pages nobody can look at until they land, a 404 from them —
- * and only a 404 — is answered locally so the list, the editor, the preview,
- * the placeholder list and the empty state can all be reviewed.
- *
- * Two locks, both of which must be off for any of it to run: production is
- * excluded outright, and outside production it still takes TEMPLATE_EXAMPLES=1
- * in the environment. A missing endpoint in production is a fault and has to
- * read as one.
- *
- * Nothing here invents a template. The store starts empty, which is the state
- * the real one is in, and only holds what somebody types into the editor
- * during a session — no subject and no body is written anywhere in this file,
- * because the wording of the first email this system sends is not a
- * developer's to draft.
- *
- * The preview here is deliberately not markdown. It escapes the text and
- * breaks it into paragraphs, so an author can see their own words in the
- * message frame while the real renderer is being built. Formatting will not
- * work and is not meant to. When the endpoints land this block goes and
- * nothing above it changes.
- */
-
-/** Never in production, and off by default everywhere else. */
-const EXAMPLES =
-  process.env.NODE_ENV !== "production" &&
-  process.env.TEMPLATE_EXAMPLES === "1";
-
-/** Empty until somebody writes one. Lost when the dev server restarts. */
-const examples = new Map<string, Template>();
-
-function exampleList(): TemplateRow[] {
-  return [...examples.values()].map(({ key, name, kind, subject, version }) => ({
-    key,
-    name,
-    kind,
-    subject,
-    version,
-    updatedAt: null,
-  }));
-}
-
-function exampleOne(key: string): Template | null {
-  return examples.get(key) ?? null;
-}
-
-function exampleWrite(draft: TemplateDraft): Saved {
-  const key = draft.key || `template_${crypto.randomUUID().replaceAll("-", "")}`;
-  const existing = examples.get(key);
-  const version = (existing?.version ?? 0) + 1;
-  const { html, text } = examplePreview(draft);
-  const name = draft.name.trim() || draft.subject.trim();
-
-  examples.set(key, {
-    ...draft,
-    key,
-    name,
-    settingsComplete: true,
-    html,
-    text,
-    version,
-    placeholders: placeholderNames(`${draft.subject}\n${draft.body}`),
-  });
-
-  return { ok: true, key, name, version, note: null };
-}
-
-function examplePreview(input: {
-  subject: string;
-  body: string;
-  format: TemplateFormat;
-  previewText?: string | null;
-}): Rendered {
-  const escaped = input.body
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-
-  const html = escaped
-    .split(/\n{2,}/)
-    .filter((block) => block.trim() !== "")
-    .map((block) => `<p>${block.replaceAll("\n", "<br>")}</p>`)
-    .join("\n");
-
-  return { subject: input.subject, html, text: input.body };
-}
-
-function placeholderNames(text: string): string[] {
-  return [...new Set([...text.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]))];
 }

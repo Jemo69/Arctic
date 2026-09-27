@@ -71,8 +71,7 @@
 .device:focus-visible,
 .iconButton:focus-visible,
 .testButton:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline: none;
 }
 
 .iconButton:disabled,

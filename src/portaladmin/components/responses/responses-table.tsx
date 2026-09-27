@@ -3,6 +3,7 @@
 import { ArrowDown01Icon, ArrowRight01Icon, Attachment01Icon } from "@hugeicons/core-free-icons";
 import type { CSSProperties } from "react";
 import { Icon } from "@/components/ui/icon";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { FormField } from "@/lib/api";
 import { AnswerCell } from "./answers";
 import type { Column } from "./columns";
@@ -11,13 +12,14 @@ import { respondentFor, submittedAt } from "./respondent";
 import styles from "./responses.module.css";
 import type { ResponseItem } from "./types";
 
-export function ResponsesTable({ fields, items, openId, onOpen, showResume, columns }: {
+export function ResponsesTable({ fields, items, openId, onOpen, showResume, columns, loading = false }: {
   fields: FormField[];
   items: ResponseItem[];
   openId: string | null;
   onOpen: (id: string) => void;
   showResume: boolean;
   columns: Column[];
+  loading?: boolean;
 }) {
   // A resume column on a form that never asked for one is an empty column on
   // every row forever.
@@ -35,7 +37,7 @@ export function ResponsesTable({ fields, items, openId, onOpen, showResume, colu
 
   return (
     <div className={styles.scroll} role="region" aria-label="Responses table" tabIndex={0}>
-      <table className={styles.table} aria-label="Form responses"
+      <table className={styles.table} aria-label="Form responses" aria-busy={loading}
         style={{ "--answer-columns-width": `${184 + widths.reduce((total, width) => total + width, 0) + (resumes ? 144 : 0)}px` } as CSSProperties}>
         <colgroup>
           <col className={styles.respondentColumn} />
@@ -97,6 +99,12 @@ export function ResponsesTable({ fields, items, openId, onOpen, showResume, colu
               </tr>
             );
           })}
+          {loading ? Array.from({ length: 3 }, (_, index) => <tr key={`loading-${index}`} aria-hidden="true">
+            <td><Skeleton width="75%" height={14} /></td>
+            <td><Skeleton width="60%" height={11} /></td>
+            {columns.map(column => <td key={column.key}><Skeleton width="70%" height={11} /></td>)}
+            {resumes ? <td><Skeleton width={70} height={24} /></td> : null}
+          </tr>) : null}
         </tbody>
       </table>
     </div>

@@ -176,32 +176,12 @@ exists.
 Uploading a resume needs Azurite, which `docker compose up` starts. Without it
 the API answers 503 and says so; the rest of the form still works.
 
-### Looking at the steps without an API that serves sections
-
-Scaffolding, and it is meant to be deleted. `lib/preview.ts` makes up a form
-with sections in it so the multi-step page can be looked at before the API can
-serve one:
-
-```bash
-FORMS_PREVIEW=1 npm run dev
-# /preview      — a form in five steps
-# /previewflat  — the same questions with no sections, i.e. the single page
-```
-
-Two locks, both of which have to be open: `FORMS_PREVIEW=1`, and `NODE_ENV` not
-being `production`, so a shipped build can never serve it. The copy in it is
-placeholder and has not been approved. Delete the file and the marked block in
-`lib/api.ts` once a real form has sections.
-
 ## What is not here yet
 
 - **Cleaning up abandoned uploads.** Closing the tab half way through leaves a
   stored file no application points at. `applications.resume_uploads` has the
   index a sweeper will read; until somebody writes one, those are a storage
   bill rather than a correctness problem.
-- **Surveys.** `kind = 'survey'` forms render, but submitting one is refused
-  with a 501: there is no table for a survey answer to go in yet, and accepting
-  the answers to drop them would leave somebody believing they had replied.
 - **Saving a part-filled form.** The applications table has an `incomplete`
   status ready for it, but nothing here writes one until there is a way to
   identify who is coming back.

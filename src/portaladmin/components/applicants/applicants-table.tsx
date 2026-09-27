@@ -1,5 +1,7 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
+
 import { ErrorToast } from "@/components/ui/error-toast";
 
 import Link from "next/link";
@@ -153,19 +155,19 @@ export function ApplicantsTable({
               ? Array.from({ length: WAITING }, (_, index) => (
                   <tr key={`waiting-${index}`} className={styles.pending} aria-hidden>
                     <td className={styles.who}>
-                      <span />
+                      <Skeleton width="75%" height={11} />
                     </td>
                     <td>
-                      <span />
+                      <Skeleton width="75%" height={11} />
                     </td>
                     <td>
-                      <span />
+                      <Skeleton width="75%" height={11} />
                     </td>
                     <td>
-                      <span />
+                      <Skeleton width="75%" height={11} />
                     </td>
                     <td>
-                      <span />
+                      <Skeleton width="75%" height={11} />
                     </td>
                   </tr>
                 ))

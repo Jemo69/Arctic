@@ -23,17 +23,27 @@
   justify-content: space-between;
   gap: 1.5rem;
   flex-wrap: wrap;
-  padding-bottom: 1rem;
-  margin-bottom: 1.25rem;
-  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
 }
 
 .title {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 14px;
   flex-wrap: wrap;
 }
+
+.breadcrumb { display: flex; align-items: center; gap: 14px; min-height: 32px; margin: 4px 0 16px; color: var(--muted); font-size: 12px; }
+.breadcrumb a { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; color: var(--muted); text-decoration: none; }
+.breadcrumb a:hover { color: var(--ink); }
+.breadcrumb > span:last-child { color: var(--ink); }
+.title h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.035em; line-height: 1.35; overflow-wrap: anywhere; }
+.created { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.title .status { gap: 6px; padding: 5px 10px; border: 0; border-radius: 999px; background: var(--field); color: var(--muted); font-size: 11px; font-weight: 500; }
+.title .status::before { width: 5px; height: 5px; }
+.title .status[data-status="sent"] { background: var(--ok-soft); color: var(--ok); }
+.title .status:is([data-status="queued"], [data-status="sending"]) { background: var(--warn-soft); color: var(--warn); }
+.title .status[data-status="failed"] { background: var(--stop-soft); color: var(--stop); }
 
 /*
  * The one line on the page that is coloured before anybody has done anything.
@@ -70,16 +80,14 @@
  * skip the red one.
  */
 .approval {
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius-lg);
-  background: var(--sunken);
-  padding: 0.85rem 1rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 30px;
 }
 
 .approval.blocked {
-  border-left-color: var(--stop);
+  padding: 14px 18px;
+  border-left: 3px solid var(--stop);
+  background: var(--stop-soft);
+  border-radius: 10px;
 }
 
 .approval p {
@@ -94,9 +102,9 @@
 .approvalWho {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem 1.25rem;
+  gap: 8px 24px;
   color: var(--muted);
-  font-size: var(--step-1);
+  font-size: 12px;
 }
 
 /* Ruled off only when there is a sentence above it to be ruled off from. */
@@ -106,8 +114,10 @@
   border-top: 1px solid var(--line-soft);
 }
 
-.approvalWho code {
+.approvalWho strong {
   color: var(--ink);
+  font-weight: 500;
+  margin-left: 4px;
 }
 
 /*
@@ -120,9 +130,13 @@
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: 1.25rem;
+  gap: 24px;
   align-items: start;
+  margin-top: 28px;
+  min-width: 0;
 }
+
+.layout[data-draft="false"] { grid-template-columns: minmax(0, 1fr); }
 
 /* Stage two and the confirmation are not a column of anything. */
 .full {
@@ -145,8 +159,9 @@
  * that there are two of them before reading either.
  */
 .card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 18px;
   background: var(--raised);
   overflow: hidden;
 }
@@ -157,19 +172,21 @@
   justify-content: space-between;
   gap: 0.75rem;
   flex-wrap: wrap;
-  padding: 0.6rem 1rem;
-  background: var(--sunken);
-  border-bottom: 1px solid var(--line);
+  padding: 23px 24px 0;
 }
 
 .cardHead h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin: 0;
-  font-size: var(--step-1);
+  font-size: 15px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
+  letter-spacing: -.02em;
+  color: var(--ink);
 }
+
+.cardHead h2 > svg { color: var(--muted); flex: none; }
 
 /* Which of the two stages this is. Accent because it is the thread through the
    screen, and the accent is for the thing to do next. */
@@ -191,25 +208,63 @@
 }
 
 .cardBody {
-  padding: 1rem;
+  padding: 24px;
 }
 
 /* What the campaign is, before what it would do. */
 .facts {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.55rem 1rem;
+  gap: 20px 24px;
   margin: 0;
 }
 
 .facts dt {
   color: var(--muted);
-  font-size: var(--step-1);
+  font-size: 13px;
 }
 
 .facts dd {
   margin: 0;
   overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.templateLink { color: var(--ink); text-underline-offset: 4px; text-decoration-color: var(--line); }
+.templateLink:hover { color: var(--accent); }
+.templateHint { margin: 24px 0 0; padding-top: 18px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 12px; line-height: 1.7; }
+.kind { text-transform: capitalize; }
+.recipientsSection { min-width: 0; padding: 12px 0 6px; }
+.recipientsHeader { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 16px; }
+.recipientsHeader h2 { margin: 0; color: var(--ink); font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
+.recipientsHeader p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.sampleCount { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.recipientTableWrap { max-width: 100%; overflow-x: auto; }
+.recipientTable { width: 100%; min-width: 760px; table-layout: fixed; border-collapse: collapse; }
+.recipientTable th, .recipientTable td { padding: 17px 16px; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+.recipientTable th { color: var(--muted); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.recipientTable th > span { font-weight: 400; }
+.recipientTable td { color: var(--ink); font-size: 13px; line-height: 1.6; }
+.recipientTable th:first-child, .recipientTable td:first-child { width: 38%; padding-left: 0; }
+.recipientTable th:last-child, .recipientTable td:last-child { width: 28%; padding-right: 0; }
+.recipientTable time { font-size: 12px; font-variant-numeric: tabular-nums; }
+.missingRecipientValue { color: var(--faint); }
+.recipientFooter { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding-top: 20px; }
+.recipientFooter > p { margin: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.recipientPagination, .recipientPageNumbers { display: flex; align-items: center; gap: 5px; }
+.recipientPagination button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 34px; min-height: 34px; padding: 7px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.recipientPagination button:hover:not(:disabled), .recipientPagination button[aria-current="page"] { background: var(--field); color: var(--ink); }
+.recipientPagination button:disabled { opacity: .4; cursor: default; }
+.recipientPagination button:focus-visible, .recipientTableWrap:focus-visible { outline: none; }
+.recipientPageNumbers > span { padding: 0 4px; color: var(--faint); }
+.recipientMobilePage { display: none; color: var(--muted); font-size: 12px; }
+.recipientError { margin: 14px 0 0; color: var(--stop); font-size: 12px; }
+
+@media (max-width: 600px) {
+  .recipientFooter { align-items: flex-start; gap: 12px; }
+  .recipientPagination { width: 100%; justify-content: space-between; }
+  .recipientPageNumbers { display: none; }
+  .recipientMobilePage { display: block; }
 }
 
 /* Numbers -------------------------------------------------------------- */
@@ -235,7 +290,7 @@
 
 .tile {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 12px;
   background: var(--sunken);
   padding: 0.6rem 0.75rem;
 }
@@ -739,6 +794,8 @@ p.stepCount {
   margin-top: 1rem;
 }
 
+.actions button { min-height: 38px; padding: 9px 17px; border-radius: 999px; font-size: 12px; }
+
 /*
  * The second press.
  *
@@ -801,26 +858,55 @@ p.stepCount {
  * changed.
  */
 .outcome {
-  padding-left: 0.85rem;
-  border-left: 2px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  --outcome-color: var(--muted);
+  --outcome-surface: var(--field);
 }
 
 .outcome.done {
-  border-left-color: var(--ok);
+  --outcome-color: var(--ok);
+  --outcome-surface: var(--ok-soft);
 }
 
 .outcome.running {
-  border-left-color: var(--warn);
+  --outcome-color: var(--warn);
+  --outcome-surface: var(--warn-soft);
 }
 
 .outcome.stopped {
-  border-left-color: var(--stop);
+  --outcome-color: var(--stop);
+  --outcome-surface: var(--stop-soft);
 }
 
+.performanceSection { min-width: 0; padding: 12px 0 0; }
+.performanceHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; margin-bottom: 22px; }
+.performanceHeader h2 { margin: 0; color: var(--ink); font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
+.performanceMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 16px; color: var(--muted); font-size: 11px; }
+.performanceStatus { display: inline-flex; align-items: center; gap: 6px; color: var(--outcome-color); font-weight: 500; }
+.performanceRecipients { padding-left: 16px; border-left: 1px solid var(--line-soft); }
+.deliveryDetails { margin-top: 20px; padding: 14px 0; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.deliveryDetails > summary { color: var(--muted); font-size: 12px; cursor: pointer; }
+.deliveryDetails > summary > span { float: right; font-size: 11px; }
+
 .outcome p {
-  margin: 0.25rem 0 0;
+  margin: 7px 0 0;
   color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
+
+.outcomeIcon { display: grid; place-items: center; flex: 0 0 48px; height: 48px; border-radius: 50%; background: var(--outcome-surface); color: var(--outcome-color); }
+.outcomeCopy { min-width: 0; }
+.outcomeCopy h3 { margin: 0; color: var(--ink); font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
+.recipientMetric { margin-left: auto; text-align: right; padding-left: 24px; }
+.recipientMetric .headline { font-size: 34px; }
+.recipientMetric > span { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
+.deliveryProgress { margin-top: 26px; }
+.progressCaption { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; color: var(--muted); font-size: 11px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.progressTrack { height: 6px; overflow: hidden; border-radius: 999px; background: var(--field); }
+.progressTrack > span { display: block; height: 100%; border-radius: inherit; background: var(--ok); }
 
 /*
  * How far through the queue it is.
@@ -832,9 +918,8 @@ p.stepCount {
  */
 .progress {
   list-style: none;
-  margin: 1rem 0 0;
-  padding: 0.85rem 0 0;
-  border-top: 1px solid var(--line-soft);
+  margin: 14px 0 0;
+  padding: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem 1.25rem;
@@ -843,8 +928,8 @@ p.stepCount {
 .progress li {
   display: flex;
   align-items: baseline;
-  gap: 0.4rem;
-  font-size: var(--step-1);
+  gap: 7px;
+  font-size: 12px;
 }
 
 .progress b {
@@ -854,8 +939,28 @@ p.stepCount {
 
 .progress span {
   color: var(--muted);
-  font-family: var(--mono);
-  font-size: var(--step-2);
+  font-size: 12px;
+}
+
+.progress span::first-letter { text-transform: uppercase; }
+
+@media (max-width: 600px) {
+  .breadcrumb { margin-bottom: 10px; }
+  .title h1 { font-size: 24px; }
+  .title { gap: 10px; }
+  .approvalWho { gap: 6px 18px; }
+  .cardHead { padding: 20px 20px 0; }
+  .cardBody { padding: 20px; }
+  .outcome { flex-wrap: wrap; gap: 13px; }
+  .outcomeIcon { flex-basis: 40px; height: 40px; }
+  .outcomeCopy { flex: 1 1 190px; }
+  .outcomeCopy h3 { font-size: 17px; }
+  .recipientMetric { width: 100%; margin: 4px 0 0; padding: 0; text-align: left; }
+  .recipientMetric .headline { font-size: 30px; }
+  .progressCaption { align-items: flex-start; gap: 10px; }
+  .progressCaption > span:last-child { flex: none; }
+  .facts { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .facts dd + dt { margin-top: 12px; }
 }
 
 /* The list --------------------------------------------------------------- */

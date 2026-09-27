@@ -1,6 +1,4 @@
-import { CampaignsTable } from "@/components/mail/campaigns-table";
-import { NewCampaign } from "@/components/mail/new-campaign";
-import { NoCampaigns } from "@/components/mail/no-campaigns";
+import { MailList } from "@/components/mail/mail-list";
 import { readPageData } from "@/lib/page-data";
 import { Shell } from "../shell";
 import { newCampaign } from "./actions";
@@ -10,25 +8,21 @@ import { readBroadcastTemplates, readCampaigns, readForms } from "./api";
  * Everything the registration team has mailed, or is about to.
  *
  * The list answers where each campaign got to and who it reached. Creating one
- * happens here because it is three fields; sending one does not, because it is
+ * happens here; sending one does not, because it is
  * the thing that cannot be taken back and it belongs on a page of its own,
  * behind a preview.
  */
 export default async function Mail() {
-  // None of the three needs another's answer. The forms are for the segment
-  // picker and the templates for the dropdown beside it, and awaiting them in
-  // turn would make the screen three times as slow to arrive for nothing.
-  const { person, data: [campaigns, choices, templates] } = await readPageData(() => Promise.all([
+  const { person, data: [campaigns, templates, audiences] } = await readPageData(() => Promise.all([
     readCampaigns(),
-    readForms(),
     readBroadcastTemplates(),
+    readForms(),
   ]));
-  const { forms, events } = choices;
 
   if (!campaigns.ok) {
     return (
       <Shell personId={person.personId}>
-        <h1>Mail</h1>
+        <h1>Email Campaign</h1>
         <div className="empty">
           {campaigns.status === 403 ? (
             <>
@@ -59,40 +53,19 @@ export default async function Mail() {
   // holds both -- which is exactly how a mismatch like this survives until an
   // event weekend when somebody is given one of them.
   const canCompose = person.permissions.has("email.manage_templates");
-  const canSend = person.permissions.has("email.send_broadcast");
 
   return (
     <Shell personId={person.personId}>
-      <h1>Mail</h1>
-      <p className="lede">
-        Campaigns to applicants and organizers. A campaign is created as a
-        draft, and is sent from its own page once its recipients have been
-        previewed.
-      </p>
 
-      {/* Scaffolding, and says so. Goes with the fixtures in api.ts the moment
-          the endpoints land. */}
-      {campaigns.mocked ? (
-        <p className="error">
-          Showing example data. The campaigns API is not available yet.
-        </p>
-      ) : null}
-
-      {canCompose ? (
-        <NewCampaign
-          forms={forms}
-          events={events}
-          templates={templates.templates}
-          templatesError={templates.error}
-          create={newCampaign}
-        />
-      ) : null}
-
-      {campaigns.items.length === 0 ? (
-        <NoCampaigns />
-      ) : (
-        <CampaignsTable campaigns={campaigns.items} />
-      )}
+      <MailList
+        initialPage={campaigns}
+        forms={audiences.forms}
+        events={audiences.events}
+        templates={templates.templates}
+        templatesError={templates.error}
+        canCompose={canCompose}
+        create={newCampaign}
+      />
     </Shell>
   );
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { FormsBodySkeleton } from "@/components/ui/page-skeleton";
+
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar03Icon, Cancel01Icon, LayoutGridIcon, LayoutListIcon, Link04Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -89,7 +91,7 @@ export function FormsList({ events, chosen, forms, now, canManage }: {
       </div>
     </header>
     <div className={styles.results} aria-busy={switching}>
-      {forms.length === 0 ? <NoForms event={chosen.name} /> : visible.length === 0 ? <EmptyState size="page" title="No forms found"
+      {switching ? <FormsBodySkeleton view={view} /> : forms.length === 0 ? <NoForms event={chosen.name} /> : visible.length === 0 ? <EmptyState size="page" title="No forms found"
         description={search ? "Try another form name or share code." : "There are no forms with this status yet."}
         action={<button type="button" className={styles.secondaryButton} onClick={() => { setFilter("all"); setQuery(""); }}>Clear filters</button>} /> : <>
         {view === "grid" ? <FormsCards forms={visible} now={now} canManage={canManage} /> : <FormsTable forms={visible} now={now} />}

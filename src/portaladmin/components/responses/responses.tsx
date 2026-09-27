@@ -161,6 +161,7 @@ export function Responses({
 
         <ResponsesTable
           fields={fields}
+          loading={loading}
           items={items}
           openId={openId}
           onOpen={open}

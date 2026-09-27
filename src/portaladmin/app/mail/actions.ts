@@ -2,12 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { Preview, Segment } from "@/components/mail/types";
+import type { CampaignListFilters, CampaignSaveResult, CampaignUpdate, Preview, RecipientRead } from "@/components/mail/types";
 import {
   cancelCampaign,
   createCampaign,
   previewCampaign,
+  readCampaignRecipients,
+  readCampaigns,
   sendCampaign,
+  updateCampaign,
 } from "./api";
 
 /**
@@ -21,6 +24,10 @@ import {
 
 /** What a form got back. Empty is the state before anything was submitted. */
 export type FormState = { error?: string };
+
+export async function loadCampaigns(filters: CampaignListFilters) {
+  return readCampaigns(filters);
+}
 
 export type PreviewResult =
   | { ok: true; preview: Preview }
@@ -45,71 +52,6 @@ function text(form: FormData, field: string): string {
 }
 
 /**
- * The addresses somebody pasted in, one per line or comma-separated.
- *
- * Deduplicated, because a list pasted out of a spreadsheet has the same person
- * on it twice and nobody wants two copies of the same email.
- */
-function addressList(raw: string): string[] {
-  const seen = new Set<string>();
-
-  for (const part of raw.split(/[\n,;]/)) {
-    const address = part.trim();
-    if (address !== "") {
-      seen.add(address);
-    }
-  }
-
-  return [...seen];
-}
-
-/** The segment the compose form describes, or the sentence saying it does not. */
-function readSegment(form: FormData): Segment | string {
-  const kind = text(form, "segmentKind");
-
-  // These names are the API's, not this screen's. The first version of this
-  // file invented its own and nothing caught it, because a segment is jsonb on
-  // the way in and only fails when somebody tries to send.
-  if (kind === "applicants") {
-    const status = text(form, "status");
-    const eventId = text(form, "eventId");
-
-    if (status === "") {
-      return "Pick a status.";
-    }
-
-    if (eventId === "") {
-      return "Pick an event.";
-    }
-
-    return { type: "applicationStatus", eventId, statuses: [status] };
-  }
-
-  if (kind === "form") {
-    const formId = text(form, "formId");
-    return formId === ""
-      ? "Pick a form."
-      : { type: "formRespondents", formId };
-  }
-
-  if (kind === "addresses") {
-    const addresses = addressList(text(form, "addresses"));
-
-    if (addresses.length === 0) {
-      return "Add at least one address.";
-    }
-
-    if (addresses.some((address) => !address.includes("@"))) {
-      return "Every line must be an email address.";
-    }
-
-    return { type: "explicitList", emails: addresses };
-  }
-
-  return "Pick who this goes to.";
-}
-
-/**
  * Starts a campaign and opens it.
  *
  * A draft, always. Creating one sends nothing — the send is a separate act on
@@ -130,12 +72,7 @@ export async function newCampaign(
     return { error: "A template key is required." };
   }
 
-  const segment = readSegment(form);
-  if (typeof segment === "string") {
-    return { error: segment };
-  }
-
-  const created = await createCampaign({ name, templateKey, segment });
+  const created = await createCampaign({ name, templateKey, segment: null });
   if (!created.ok) {
     return { error: created.error };
   }
@@ -151,6 +88,19 @@ export async function previewRecipients(id: string): Promise<PreviewResult> {
   return previewCampaign(id);
 }
 
+export async function loadSavedRecipients(id: string, page: number): Promise<RecipientRead> {
+  return readCampaignRecipients(id, page);
+}
+
+export async function saveCampaignSettings(id: string, draft: CampaignUpdate): Promise<CampaignSaveResult> {
+  const result = await updateCampaign(id, draft);
+  if (result.ok) {
+    revalidatePath("/mail");
+    revalidatePath(`/mail/${id}`);
+  }
+  return result;
+}
+
 /**
  * Sends, if the recipients are still the ones that were previewed.
  *
@@ -160,10 +110,14 @@ export async function previewRecipients(id: string): Promise<PreviewResult> {
  * while they read the sample, is stopped by the server rather than by the
  * screen. The button is the courtesy; this is the control.
  */
-export async function sendNow(id: string, seen: number): Promise<SendResult> {
+export async function sendNow(id: string, seen: number, revision?: number): Promise<SendResult> {
   const preview = await previewCampaign(id);
   if (!preview.ok) {
     return { ok: false, error: preview.error };
+  }
+
+  if (revision !== undefined && preview.preview.revision !== revision) {
+    return { ok: false, error: "The campaign changed since your preview. Review it again before sending.", preview: preview.preview };
   }
 
   if (preview.preview.recipientCount !== seen) {
@@ -178,7 +132,7 @@ export async function sendNow(id: string, seen: number): Promise<SendResult> {
     return { ok: false, error: "Nobody matches this segment." };
   }
 
-  const sent = await sendCampaign(id);
+  const sent = await sendCampaign(id, revision);
   if (!sent.ok) {
     return { ok: false, error: sent.error };
   }

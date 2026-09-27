@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChartHistogramIcon, Mail01Icon, MinusSignIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
+import { ListBodySkeleton } from "@/components/ui/page-skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NavigationLink as Link } from "@/components/ui/navigation-link";
 import { emailDocument } from "@/components/templates/email-preview";
@@ -40,7 +41,7 @@ export function BestEmailsCard({ campaigns, error = false }: {
     <div id="best-emails-list" hidden={!expanded}>
       {error ? <div className={styles.empty} role="status"><Icon icon={Mail01Icon} size={24} />
         <div><strong>Email performance couldn’t load</strong><p>Refresh the dashboard to try again.</p></div></div>
-      : !campaigns ? <div className={styles.empty} role="status"><Icon icon={Mail01Icon} size={24} /><p>Loading email performance…</p></div>
+      : !campaigns ? <ListBodySkeleton kind="campaigns" rows={3} header={false} label="Loading email performance…" />
       : campaigns.length === 0 ? <EmptyState className={styles.noCampaigns} title="Your next send starts here"
         description="Sent campaigns and their click results will appear here." />
       : <ol className={styles.rows} aria-label="Best performing email campaigns">

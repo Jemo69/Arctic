@@ -33,6 +33,15 @@ COPY libs/ libs/
 RUN dotnet publish src/atlas/MorganHacks.Api/MorganHacks.Api.csproj \
     -c Release -o /app --no-restore
 
+ARG COUNTRY_DATABASE_RELEASE=2026-09
+ARG COUNTRY_DATABASE_SHA256=cb0578ce59f569f2c933bb40feb820804a334855a60739011b0a89cab1d6e4ed
+RUN curl --fail --location --retry 3 --max-time 120 \
+      "https://download.db-ip.com/free/dbip-country-lite-${COUNTRY_DATABASE_RELEASE}.mmdb.gz" -o /tmp/country.mmdb.gz \
+ && printf '%s  %s\n' "$COUNTRY_DATABASE_SHA256" /tmp/country.mmdb.gz | sha256sum -c - \
+ && mkdir -p /app/data \
+ && gzip -dc /tmp/country.mmdb.gz > /app/data/country.mmdb \
+ && rm /tmp/country.mmdb.gz
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
 # Npgsql probes for Kerberos support on every connection. Without this library
@@ -45,6 +54,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=build /app .
+ENV EmailTracking__CountryDatabasePath=/app/data/country.mmdb
 
 # Non-root. The image ships an unprivileged user for exactly this, and a
 # container that does not need root should not have it.

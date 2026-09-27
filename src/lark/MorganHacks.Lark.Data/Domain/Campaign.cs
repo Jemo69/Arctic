@@ -25,10 +25,35 @@ public sealed record Campaign(
     Guid? ApprovedBy,
     DateTimeOffset? QueuedAt,
     DateTimeOffset? CompletedAt,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    bool TrackingEnabled = false,
+    CampaignEmailSettings? Settings = null,
+    int Revision = 0,
+    Guid? UpdatedBy = null)
 {
     /// <summary>A draft is the only thing that can be sent.</summary>
     public bool IsDraft => Status == "draft";
+}
+
+public sealed record CampaignEmailSettings(
+    string Subject, string PreviewText, string FromName, string FromEmail, string ReplyTo)
+{
+    public static CampaignEmailSettings From(EmailTemplate template) => new(
+        template.Subject, template.PreviewText ?? "", template.FromName ?? "", template.Address, template.ReplyTo ?? "");
+
+    public EmailTemplate Apply(EmailTemplate template)
+    {
+        var at = FromEmail.LastIndexOf('@');
+        return template with
+        {
+            Subject = Subject,
+            PreviewText = PreviewText,
+            FromName = FromName,
+            FromLocal = FromEmail[..at],
+            FromDomain = FromEmail[(at + 1)..],
+            ReplyTo = string.IsNullOrEmpty(ReplyTo) ? null : ReplyTo,
+        };
+    }
 }
 
 /// <summary>
@@ -79,7 +104,15 @@ public sealed record BroadcastRecipient(
     string Subject,
     string BodyHtml,
     string BodyText,
-    bool Suppressed);
+    bool Suppressed,
+    string? FirstName = null,
+    string? LastName = null);
+
+public sealed record CampaignRecipient(
+    Guid Id, string Email, string? FirstName, string? LastName, DateTimeOffset? SentAt);
+
+public sealed record CampaignRecipientPage(
+    IReadOnlyList<CampaignRecipient> Items, int Page, int PageSize, int Total);
 
 /// <summary>Why a send was refused, or that it was not.</summary>
 public enum QueueResult
@@ -98,6 +131,8 @@ public enum QueueResult
 
     /// <summary>No campaign with that id.</summary>
     NoSuchCampaign,
+
+    Changed,
 }
 
 /// <summary>What a send did, for the response and for the log line.</summary>
