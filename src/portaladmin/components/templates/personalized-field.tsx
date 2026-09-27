@@ -14,7 +14,7 @@ const EmojiPicker = dynamic(() => import("./subject-emoji-picker"), {
   ssr: false,
 });
 
-export function PersonalizedField({ id, label, placeholder, describedBy, value, onChange, available, className, validationError }: {
+export function PersonalizedField({ id, label, placeholder, describedBy, value, onChange, available, className, validationError, required }: {
   id: string;
   label: string;
   placeholder: string;
@@ -24,6 +24,7 @@ export function PersonalizedField({ id, label, placeholder, describedBy, value, 
   available: Placeholder[] | null;
   className: string;
   validationError?: string;
+  required?: boolean;
 }) {
   const pickerId = useId();
   const field = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
@@ -118,6 +119,7 @@ export function PersonalizedField({ id, label, placeholder, describedBy, value, 
         placeholder={placeholder}
         className={`${className} ${styles.input}`}
         maxLength={200}
+        required={required}
         invalid={Boolean(validationError)}
         describedBy={describedBy}
       />

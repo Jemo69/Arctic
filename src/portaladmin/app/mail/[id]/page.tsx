@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { ArrowLeft01Icon, Layout01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/ui/icon";
 import styles from "@/components/mail/mail.module.css";
 import { Sending } from "@/components/mail/sending";
+import { CampaignDraft } from "@/components/mail/campaign-draft";
+import { Recipients } from "@/components/mail/recipients";
+import { CampaignContent, CampaignMetrics, CampaignReports, ReportRefresh } from "@/components/mail/campaign-report";
 import { StatusPill } from "@/components/mail/status";
 import { describeSegment, when } from "@/components/mail/types";
 import { currentPerson } from "@/lib/api";
+import { readPlaceholders } from "@/app/templates/api";
 import { Shell } from "../../shell";
-import { previewRecipients, sendNow, stopSending } from "../actions";
-import { readCampaign, readForms } from "../api";
+import { loadSavedRecipients, previewRecipients, saveCampaignSettings, sendNow, stopSending } from "../actions";
+import { readBroadcastTemplates, readCampaign, readForms } from "../api";
 
 /**
  * One campaign, and the only place it can be sent from.
@@ -30,7 +36,12 @@ export default async function Campaign({
     redirect("/sign-in");
   }
 
-  const [read, forms] = await Promise.all([readCampaign(id), readForms()]);
+  const canManageTemplates = person.permissions.has("email.manage_templates");
+  const [read, forms, templates] = await Promise.all([
+    readCampaign(id),
+    readForms(),
+    canManageTemplates ? readBroadcastTemplates() : Promise.resolve({ templates: [] }),
+  ]);
 
   if (!read.ok) {
     if (read.status === 404) {
@@ -56,7 +67,33 @@ export default async function Campaign({
     );
   }
 
-  const { campaign, messages, sample, mocked } = read;
+  const { campaign, messages, analytics } = read;
+  if (campaign.status === "draft" && canManageTemplates && analytics?.content) {
+    const fields = await readPlaceholders(campaign.segment ? campaign.id : undefined);
+    return (
+      <Shell personId={person.personId}>
+        <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+          <Link href="/mail"><Icon icon={ArrowLeft01Icon} size={17} />Email Campaign</Link>
+          <span aria-hidden="true">/</span><span>Campaign</span>
+        </nav>
+        <CampaignDraft
+          key={campaign.id}
+          campaign={campaign}
+          content={analytics.content}
+          available={fields.ok ? fields.items : null}
+          forms={forms.forms}
+          events={forms.events}
+          audienceError={forms.error}
+          me={person.personId}
+          canSend={person.permissions.has("email.send_broadcast")}
+          save={saveCampaignSettings.bind(null, id)}
+          preview={previewRecipients.bind(null, id)}
+          send={sendNow.bind(null, id)}
+        />
+      </Shell>
+    );
+  }
+  const template = templates.templates.find((item) => item.key === campaign.templateKey);
 
   // The form's name where the segment names a form and the form is one this
   // person can read. Its id otherwise, which is less useful and still true.
@@ -74,72 +111,69 @@ export default async function Campaign({
    * grid has — a draft with a resolved preview has a send region under it and
    * a sent campaign does not.
    */
-  const facts = (
-    <section className={styles.card}>
-      <div className={styles.cardHead}>
-        <h2>Campaign</h2>
-      </div>
-
-      <div className={styles.cardBody}>
+  const metadata = (
         <dl className={styles.facts}>
           <dt>Template</dt>
           <dd>
-            {campaign.templateKey ? <code>{campaign.templateKey}</code> : "—"}
-            {campaign.templateKind ? (
-              <>
-                {" "}
-                <span className="meta">{campaign.templateKind}</span>
-              </>
-            ) : null}
+            {campaign.templateKey ? canManageTemplates ? (
+              <Link className={styles.templateLink} href={`/templates/${encodeURIComponent(campaign.templateKey)}`}>
+                {analytics?.content?.templateName || template?.name || campaign.templateKey}
+              </Link>
+            ) : <span>{campaign.templateKey}</span> : "—"}
           </dd>
 
-          <dt>Segment</dt>
-          <dd>{describeSegment(campaign.segment, formName)}</dd>
+          <dt>Audience</dt>
+          <dd>{campaign.segment ? describeSegment(campaign.segment, formName) : "Not recorded"}</dd>
 
-          <dt>Created</dt>
-          <dd className={styles.numeric}>{when(campaign.createdAt)}</dd>
+          {campaign.trackingEnabled !== undefined ? <>
+            <dt>Tracking</dt>
+            <dd>{campaign.trackingEnabled ? "Enabled" : "Disabled"}</dd>
+          </> : null}
 
-          <dt>Sent</dt>
-          <dd className={styles.numeric}>{when(campaign.sentAt)}</dd>
+          {campaign.templateKind ? <>
+            <dt>Type</dt>
+            <dd className={styles.kind}>{campaign.templateKind}</dd>
+          </> : null}
         </dl>
+  );
 
-        {/* The subject and the body are the template's, and the template is
-            not edited here. */}
-        <p className="meta" style={{ marginTop: "0.9rem", marginBottom: 0 }}>
-          The wording is the template&rsquo;s.
-        </p>
-
-        {/*
-          The frozen list, once there is one. After a send this is the only
-          place the question "who did we actually mail" has an answer at all —
-          the segment resolves to somebody else by then — and it is null rather
-          than empty when this person may not read addresses.
-        */}
-        {sample && sample.length > 0 ? (
-          <ul className={styles.sample}>
-            {sample.map((address) => (
-              <li key={address}>{address}</li>
-            ))}
-          </ul>
-        ) : null}
+  const facts = (
+    <section key="overview" className={styles.card}>
+      <div className={styles.cardHead}>
+        <h2><Icon icon={Layout01Icon} size={19} />{analytics?.content ? "Email overview" : "Campaign details"}</h2>
+      </div>
+      <div className={styles.cardBody}>
+        {analytics?.content ? <CampaignContent content={analytics.content}>{metadata}</CampaignContent> : metadata}
       </div>
     </section>
   );
 
+  /*
+    The frozen list, once there is one. After a send this is the only
+    place the question "who did we actually mail" has an answer at all —
+    the segment resolves to somebody else by then — and it is null rather
+    than empty when this person may not read addresses.
+  */
+  const recipientPage = read.recipients;
+  const recipients = recipientPage && recipientPage.total > 0 ? (
+    <Recipients key="recipients" initial={recipientPage} loadPage={loadSavedRecipients.bind(null, id)} />
+  ) : null;
+
   return (
     <Shell personId={person.personId}>
-      <Link href="/mail" className="back">
-        ← Mail
-      </Link>
+      <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+        <Link href="/mail"><Icon icon={ArrowLeft01Icon} size={17} />Email Campaign</Link>
+        <span aria-hidden="true">/</span><span>Campaign</span>
+      </nav>
 
       <div className={styles.head}>
         <div>
           <div className={styles.title}>
-            <h1 style={{ margin: 0 }}>{campaign.name}</h1>
-            <StatusPill status={campaign.status} />
+            <h1>{campaign.name}</h1>
+            <StatusPill status={campaign.status} className={styles.status} />
           </div>
-          <p className="meta" style={{ margin: "0.35rem 0 0" }}>
-            Created {when(campaign.createdAt)}
+          <p className={styles.created}>
+            Created <time dateTime={campaign.createdAt}>{when(campaign.createdAt)}</time>
           </p>
         </div>
 
@@ -150,14 +184,8 @@ export default async function Campaign({
             about a decision they no longer have. */}
         {campaign.status === "draft" ? (
           <p className={styles.irreversible}>Cannot be undone</p>
-        ) : null}
+        ) : <ReportRefresh />}
       </div>
-
-      {mocked ? (
-        <p className="error">
-          Showing example data. The campaigns API is not available yet.
-        </p>
-      ) : null}
 
       <Sending
         campaign={campaign}
@@ -165,6 +193,9 @@ export default async function Campaign({
         me={person.personId}
         messages={messages}
         facts={facts}
+        recipients={recipients}
+        metrics={analytics ? <CampaignMetrics key="metrics" analytics={analytics} messages={messages} /> : null}
+        reports={analytics ? <CampaignReports key="reports" analytics={analytics} /> : <p className="meta">The tracking report is currently unavailable. Refresh to try again.</p>}
         preview={previewRecipients.bind(null, id)}
         send={sendNow.bind(null, id)}
         cancel={stopSending.bind(null, id)}

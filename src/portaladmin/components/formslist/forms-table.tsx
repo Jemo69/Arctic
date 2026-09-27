@@ -47,9 +47,9 @@ export function formStatus(form: FormRow, now: number): "draft" | "closed" | "li
  * still answers its link, and it shows applicants a page saying so — reading it
  * as "Live" here is how somebody puts a closed form on a flyer.
  */
-export function FormStatus({ form, now, showVersion = true }: { form: FormRow; now: number; showVersion?: boolean }) {
+export function FormStatus({ form, now }: { form: FormRow; now: number }) {
   const status = formStatus(form, now);
   return <span className={styles.status} data-state={status}>
-    {status === "live" ? <>Live{showVersion && form.publishedVersion !== null ? <span>· v{form.publishedVersion}</span> : null}</> : status === "draft" ? "Draft" : "Closed"}
+    {status === "live" ? "Live" : status === "draft" ? "Draft" : "Closed"}
   </span>;
 }

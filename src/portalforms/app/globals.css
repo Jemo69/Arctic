@@ -248,18 +248,6 @@ h1 {
   transition: border-color 140ms ease-out;
 }
 
-/*
- * Which card is being worked on.
- *
- * The card the cursor is in is bordered a shade darker than the rest. Not
- * coloured — being answered is not a warning and not the thing to do next — but
- * on a screen of near-identical boxes it is what tells somebody using a
- * keyboard which one their typing is going into.
- */
-.question:focus-within {
-  border-color: var(--muted);
-}
-
 .question.wrong {
   border-color: var(--stop);
 }
@@ -707,19 +695,6 @@ textarea {
   }
 }
 
-/*
- * The box being typed into.
- *
- * The ring from the token file is what says "the keyboard is here" and it is
- * not replaced. This is the border underneath it agreeing, so that the control
- * reads as one object rather than a grey box with a blue ring around it.
- */
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--accent);
-}
-
 textarea {
   min-height: 6rem;
   resize: vertical;
@@ -925,17 +900,8 @@ textarea.wrong:focus {
 .choices .choice:has(input:checked) {
   background: var(--accent-soft);
 }
-
-/*
- * The ring goes round the whole box, not the radio.
- *
- * The outline the token file puts on `:focus-visible` lands on a control the
- * size of a grain of rice sitting inside a box the width of the screen.
- * Somebody tabbing down a list of eight options could not see where they were.
- */
 .choice:has(input:focus-visible) {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline: none;
 }
 
 /*

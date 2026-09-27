@@ -462,21 +462,23 @@
   background: transparent;
 }
 .content {
+  --shell-content-start: 40px;
+  --shell-content-end: 40px;
   flex: 1;
   min-width: 0;
 }
 .main {
   max-width: none;
   margin: 0;
-  padding: var(--shell-top-inset) 40px 48px;
+  padding: var(--shell-top-inset) var(--shell-content-end) 48px var(--shell-content-start);
 }
 .main :global(h1),
 .main > :global(.back):first-child {
   line-height: var(--shell-heading-height);
 }
 @media (min-width: 48.001rem) {
-  .sidebar[data-collapsed="true"] + .content .main {
-    padding-left: 0;
+  .sidebar[data-collapsed="true"] + .content {
+    --shell-content-start: 0px;
   }
 }
 .mobileBar {
@@ -530,17 +532,25 @@
   .sidebar {
     width: 240px;
   }
+  .content {
+    --shell-content-start: 28px;
+    --shell-content-end: 28px;
+  }
   .main {
-    padding: var(--shell-top-inset) 28px 28px;
+    padding-bottom: 28px;
   }
 }
 @media (max-width: 48rem) {
   .sidebar {
     display: none;
   }
+  .content {
+    --shell-content-start: 20px;
+    --shell-content-end: 20px;
+  }
   .main {
     --shell-heading-height: 32px;
-    padding: 24px 20px 40px;
+    padding: 24px var(--shell-content-end) 40px var(--shell-content-start);
   }
   .mobileBar {
     position: sticky;

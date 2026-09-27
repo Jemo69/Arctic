@@ -174,14 +174,8 @@ function wrap(html: string): string {
     // which is the one thing an email does not do. Narrower than the message,
     // the frame scrolls sideways inside its own edge; the page never does,
     // because the frame clips.
-    //
-    // The scrollbars are given colours so that they are drawn at all. Left
-    // alone, an operating system with overlay scrollbars shows nothing until
-    // somebody scrolls, and a message cut off mid-row with no bar beside it
-    // reads as a message that ends there. Both are system colours, resolved
-    // under the light scheme forced above: the ground the document is already
-    // painted with, and the grey the platform uses for something inactive.
-    "html{scrollbar-color:GrayText Canvas}",
+    "*{scrollbar-width:none}",
+    "*::-webkit-scrollbar{display:none;width:0;height:0}",
     "</style></head><body>",
     html,
     "</body></html>",

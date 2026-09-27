@@ -71,6 +71,14 @@ public class RouteCoverageTests
         Assert.Empty(unreachable);
     }
 
+    [Theory]
+    [InlineData("/api/email/open/{id}")]
+    [InlineData("/api/email/click/{id}")]
+    public void Email_engagement_routes_are_reachable(string path)
+    {
+        Assert.Contains(path, Routes());
+    }
+
     private static IEnumerable<string> Routes()
     {
         // The file carries // comments, which JsonDocument rejects.

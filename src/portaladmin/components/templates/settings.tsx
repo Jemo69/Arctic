@@ -157,8 +157,8 @@ export function TemplateSettings({
 
       <label className={styles.tracking} htmlFor="click-tracking">
         <span className={styles.trackingCopy}>
-          <span id="click-tracking-label" className={styles.trackingTitle}>Enable click tracking</span>
-          <span id="click-tracking-help" className={styles.trackingDescription}>Track link clicks for analytics and insights.</span>
+          <span id="click-tracking-label" className={styles.trackingTitle}>Enable email tracking</span>
+          <span id="click-tracking-help" className={styles.trackingDescription}>Track opens and link clicks, including device and activity reports.</span>
         </span>
         <input
           id="click-tracking"

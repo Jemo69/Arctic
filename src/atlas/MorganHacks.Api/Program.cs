@@ -84,6 +84,7 @@ builder.Services.AddAuditTrail();
 builder.Services.AddSingleton<TemplateStore>();
 builder.Services.AddSingleton<MessageQueue>();
 builder.Services.AddSingleton<LinkTrackingStore>();
+builder.Services.AddSingleton<EmailCountryLookup>();
 builder.Services.AddSingleton<UnsubscribeStore>();
 
 // The writing side of the same table. Separate from TemplateStore for the
@@ -345,6 +346,7 @@ builder.Services.AddRateLimiter(options =>
 builder.AddFeatures();
 
 var app = builder.Build();
+_ = app.Services.GetRequiredService<EmailCountryLookup>();
 
 // First, so every limiter and every logged IP below sees the real caller.
 app.UseForwardedHeaders();

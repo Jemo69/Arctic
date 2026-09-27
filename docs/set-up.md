@@ -435,9 +435,8 @@ configuration binding, silently. There is a test that fails on it.
 | `PROXY_SHARED_SECRET` | all three | behind a proxy | the client address is not forwarded, so atlas rate-limits everybody into one bucket |
 | `NEXT_PUBLIC_FORMS_ORIGIN` | portaladmin | deployed | form links are built against a hardcoded production URL |
 
-Development-only switches, all of which serve fixtures instead of calling the
-API: `EVENTS_MOCK`, `MAIL_EXAMPLES`, `TEMPLATE_EXAMPLES` (portaladmin), and
-`FORMS_PREVIEW` (portalforms).
+All front ends read and write through the API in development and production.
+There are no fixture modes or successful-write fallbacks.
 
 ### Feature flags
 
@@ -628,6 +627,59 @@ Two things gate real delivery, and they are separate:
 A transactional subdomain separate from the broadcast one is the point rather
 than decoration: a blast that collects spam complaints must not be able to take
 sign-in links down with it.
+
+### Campaign engagement tracking
+
+Choose **Enable email tracking** when creating a campaign. The choice defaults
+to the selected template's tracking setting and is saved on the campaign, so
+later template edits do not change it. It controls both link redirects and a
+one-pixel open image. Transactional emails use the template setting.
+Set `SendLoop__ClickTrackingBaseUrl` on lark to the public API URL, including the
+`/api` prefix when using Harbor. Both `/email/click/{token}` and
+`/email/open/{token}` must reach atlas without authentication or edge caching.
+
+Apply migrations `0041_email_engagement.sql`, `0042_campaign_recipient_names.sql`,
+`0043_campaign_tracking.sql`, and `0044_campaign_settings.sql` before deploying atlas or lark. Deploy Harbor's
+open-tracking route with the API update, then deploy portaladmin.
+Existing link totals remain available. Individual click history begins after
+the API update; opens require emails prepared by the updated worker. There is
+no historical backfill for opens, devices, or event timestamps.
+
+The campaign report separates messages accepted for sending from the provider's
+current delivery statuses. Open rate is unique opened messages divided by sent
+messages carrying an open image. Click rate is unique clicked messages divided
+by sent messages with tracked links. Daily and hourly charts cover the last
+90 days in UTC; totals and device breakdowns cover all recorded activity.
+Security scanners and image proxies can generate events, while blocked images
+can hide opens. These are engagement signals, not proof that a person read the
+email. Browser, operating system, platform, and country reports use click events.
+
+The atlas image includes DB-IP's country database and sets
+`EmailTracking__CountryDatabasePath`. Country lookup runs locally against the
+client address resolved by the existing trusted-proxy configuration. No request
+is sent to a geolocation service. The report includes the required
+[DB-IP attribution](https://db-ip.com/db/download/ip-to-country-lite).
+Refresh `COUNTRY_DATABASE_RELEASE` and `COUNTRY_DATABASE_SHA256` in the atlas
+Docker build when adopting a new monthly database release. The checksum is for
+the compressed download; verify the decompressed database against the checksum
+published by DB-IP. For local development, point
+`EmailTracking__CountryDatabasePath` at a downloaded `.mmdb` file. Loopback and
+unresolved addresses remain unknown.
+
+An installation with its own trusted country-enriching ingress can instead set
+`EmailTracking__CountryHeader`, provided that ingress overwrites client values
+and cannot be bypassed. Do not enable that override on an unrestricted public
+host. Only the country code, parsed device categories, event time, and automation
+flag are stored; raw IP addresses and user-agent strings are not retained by
+tracking.
+
+Campaign recipients are read from saved message rows, ten per page. Names are
+snapshotted when the campaign is queued; missing names on older messages remain
+blank. The date column is the actual send time, not a generated activity date.
+
+Viewing counts requires `email.view_stats`; email content, recipient pages,
+and link destinations also require `email.manage_templates`. Loading the
+report does not send email or resolve a new audience.
 
 ### Bounce and complaint handling
 

@@ -5,9 +5,6 @@ import { apiFetch } from "@/lib/api";
 /**
  * Everything the announcements panel asks the API for.
  *
- * Separate from `./api.ts` because that file carries a development mock for the
- * events endpoints, and these are real. One file per seam is easier to delete
- * than one file with two lifetimes in it.
  */
 
 /** One notice, as an organizer sees it: retracted ones included. */

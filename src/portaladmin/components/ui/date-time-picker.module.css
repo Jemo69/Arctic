@@ -7,7 +7,7 @@
 .trigger:focus-visible { background: var(--field-active); outline: none; }
 .picker { position: fixed; inset: auto; margin: 0; padding: 14px; width: 296px; max-width: calc(100vw - 24px); overflow: auto; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--raised); color: var(--ink); box-shadow: 0 8px 24px #0000000c, 0 1px 3px #00000005; overscroll-behavior: contain; font-family: var(--body); }
 .picker button { font-family: inherit; cursor: pointer; }
-.picker button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.picker button:focus-visible { outline: none; }
 .picker button:disabled { opacity: 0.35; cursor: default; }
 .heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 .monthTitle { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; padding: 6px 2px; background: transparent; color: var(--ink); font-size: 13px; font-weight: 600; }

@@ -15,6 +15,7 @@
 .sections,
 .aside {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 36px;
   min-width: 0;
 }
@@ -242,8 +243,7 @@
 }
 
 .trackingSwitch:focus-visible {
-  outline: 1px dashed var(--accent);
-  outline-offset: 3px;
+  outline: none;
 }
 
 .tracking:has(.trackingSwitch:disabled),
@@ -435,8 +435,7 @@
 }
 
 .formatOption:focus-visible {
-  outline: 1px dashed var(--accent);
-  outline-offset: 3px;
+  outline: none;
 }
 
 .formatPreview {

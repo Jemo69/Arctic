@@ -32,6 +32,38 @@ export type CampaignRow = {
   createdAt: string;
   /** Null until it has gone out. */
   sentAt: string | null;
+  templateKey?: string | null;
+  trackingEnabled?: boolean;
+  audience?: {
+    type: "applicationStatus" | "formRespondents" | "explicitList";
+    sourceId: string | null;
+    statuses: string[] | null;
+    count: number | null;
+  } | null;
+  summary?: {
+    sentEmails: number;
+    deliveredEmails: number;
+    openTrackedEmails: number;
+    openedEmails: number;
+    trackedEmails: number;
+    clickedEmails: number;
+    previewHtml: string | null;
+  } | null;
+};
+
+export type CampaignListFilters = {
+  search: string;
+  status: CampaignStatus | "all";
+  sort: "newest" | "oldest" | "name";
+  page: number;
+};
+
+export type CampaignListPage = {
+  items: CampaignRow[];
+  total: number;
+  counts: Partial<Record<CampaignStatus, number>>;
+  page: number;
+  pageSize: number;
 };
 
 /**
@@ -63,7 +95,11 @@ export type Segment =
  * in.
  */
 export type Campaign = CampaignRow & {
+  revision: number;
+  updatedBy?: string | null;
+  settings?: CampaignEmailSettings | null;
   templateKey?: string | null;
+  trackingEnabled?: boolean;
 
   /** `broadcast` or `transactional`, as the API names it. */
   templateKind?: string | null;
@@ -75,6 +111,23 @@ export type Campaign = CampaignRow & {
   /** The second name, once there is one. */
   approvedBy?: string | null;
 };
+
+export type CampaignEmailSettings = {
+  subject: string;
+  previewText: string;
+  fromName: string;
+  fromEmail: string;
+  replyTo: string;
+};
+
+export type CampaignUpdate = CampaignEmailSettings & {
+  name: string;
+  segment: Segment | null;
+  trackingEnabled: boolean;
+  revision: number;
+};
+
+export type CampaignSaveResult = { ok: true; campaign: Campaign } | { ok: false; error: string };
 
 /**
  * What happened to the messages a campaign wrote.
@@ -89,6 +142,62 @@ export type MessageProgress = {
   pending: number;
   gone: number;
   byStatus: Record<string, number>;
+};
+
+export type CampaignRecipientPage = {
+  items: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    sentAt: string | null;
+  }[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+export type RecipientRead =
+  | { ok: true; recipients: CampaignRecipientPage }
+  | { ok: false; error: string };
+
+export type CampaignAnalytics = {
+  sentEmails: number;
+  trackedEmails: number;
+  clickedEmails: number;
+  totalClicks: number;
+  clickTrackingEnabled: boolean;
+  content: {
+    templateName: string;
+    subject: string;
+    html: string;
+    previewText: string | null;
+    fromName: string | null;
+    fromEmail: string;
+    replyTo: string | null;
+    isSample: boolean;
+  } | null;
+  links: {
+    destination: string;
+    trackedEmails: number;
+    clickedEmails: number;
+    totalClicks: number;
+    lastClickedAt: string | null;
+  }[] | null;
+  engagement: {
+    openTrackedEmails: number;
+    openedEmails: number;
+    totalOpens: number;
+    recordedClicks: number;
+    automatedEvents: number;
+    firstRecordedAt: string | null;
+    daily: { bucket: string; opens: number; clicks: number }[];
+    hourly: { bucket: string; opens: number; clicks: number }[];
+    browsers: { name: string; count: number }[];
+    operatingSystems: { name: string; count: number }[];
+    platforms: { name: string; count: number }[];
+    countries: { name: string; count: number }[];
+  };
 };
 
 /**
@@ -139,6 +248,7 @@ export type Render = {
  * thing that tells the two apart.
  */
 export type Preview = {
+  revision?: number;
   /** People who will actually be mailed. */
   recipientCount: number;
 
@@ -250,18 +360,18 @@ export function describeSegment(
   return `Address list · ${segment.emails.length}`;
 }
 
-/**
- * A timestamp, to the minute, in the order that sorts.
- *
- * Sliced off the ISO string rather than put through a locale formatter, which
- * runs in the server's zone on the server and the reader's in the browser —
- * a hydration mismatch on every row, and two different answers to "when did
- * this go out".
- */
+const campaignDate = new Intl.DateTimeFormat("en-US", {
+  month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
+});
+const campaignTime = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric", minute: "2-digit", timeZone: "UTC", timeZoneName: "short",
+});
+
 export function when(iso: string | null): string {
   if (typeof iso !== "string" || iso.length < 16) {
     return "—";
   }
 
-  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "—" : `${campaignDate.format(date)} · ${campaignTime.format(date)}`;
 }

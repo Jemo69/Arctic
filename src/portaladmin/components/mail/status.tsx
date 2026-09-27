@@ -18,11 +18,11 @@ const PILLS: Record<CampaignStatus, { className: string; label: string }> = {
   failed: { className: "pill revoked", label: "Failed" },
 };
 
-export function StatusPill({ status }: { status: CampaignStatus }) {
+export function StatusPill({ status, className = "" }: { status: CampaignStatus; className?: string }) {
   // A status the API started using that this screen has not met yet. Shown as
   // itself rather than dropped, because an unlabelled state is still a state
   // somebody needs to see.
   const pill = PILLS[status] ?? { className: "pill lapsed", label: status };
 
-  return <span className={pill.className}>{pill.label}</span>;
+  return <span className={`${pill.className} ${className}`} data-status={status}>{pill.label}</span>;
 }

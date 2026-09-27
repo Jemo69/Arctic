@@ -36,10 +36,10 @@ export default async function People() {
   return (
     <Shell personId={person.personId}>
       <div className={styles.page}>
-        <PeopleTable people={people} />
-
-        {/* The API independently enforces this permission on every write. */}
-        {person.permissions.has("people.manage_teams") ? <AddOrganizer /> : null}
+        <PeopleTable people={people}>
+          {/* The API independently enforces this permission on every write. */}
+          {person.permissions.has("people.manage_teams") ? <AddOrganizer /> : null}
+        </PeopleTable>
       </div>
     </Shell>
   );

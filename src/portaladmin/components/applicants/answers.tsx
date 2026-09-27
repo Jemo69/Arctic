@@ -1,4 +1,7 @@
-import styles from "./applicants.module.css";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/ui/icon";
+import { ApplicantTime } from "./applicant-time";
+import styles from "./applicant-detail.module.css";
 import type { Answer } from "./types";
 
 /**
@@ -24,10 +27,10 @@ export function Answers({ answers }: { answers: Answer[] }) {
   }
 
   return (
-    <div>
+    <dl className={styles.answers}>
       {answers.map((answer) => (
         <div key={answer.key} className={styles.qa}>
-          <p className={styles.question}>
+          <dt className={styles.question}>
             {answer.label ?? (
               // The key, because the wording was deleted with the question and
               // this is all that is left of it. Mono so it reads as an
@@ -36,11 +39,11 @@ export function Answers({ answers }: { answers: Answer[] }) {
                 {answer.key}
               </span>
             )}
-          </p>
-          <Value value={answer.value} />
+          </dt>
+          <dd className={styles.value}><Value answer={answer} /></dd>
         </div>
       ))}
-    </div>
+    </dl>
   );
 }
 
@@ -51,9 +54,18 @@ export function Answers({ answers }: { answers: Answer[] }) {
  * including under a key no question claims — so every shape is narrowed here
  * rather than assumed anywhere else.
  */
-function Value({ value }: { value: unknown }) {
+function Value({ answer }: { answer: Answer }) {
+  const { key, value } = answer;
   if (value === null || value === undefined || value === "") {
     return <p className={styles.unanswered}>Not answered</p>;
+  }
+
+  if ((key === "mlh_coc_agreed_at" || key === "mlh_data_sharing_at")
+    && typeof value === "string" && !Number.isNaN(Date.parse(value))) {
+    return <div className={styles.agreement}>
+      <p><Icon icon={Tick02Icon} size={16} />Agreed</p>
+      <ApplicantTime value={value} />
+    </div>;
   }
 
   if (Array.isArray(value)) {

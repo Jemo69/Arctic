@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { ArrowLeft01Icon, ArrowUpRight01Icon, Clock01Icon, DocumentValidationIcon, FileAttachmentIcon, Mail01Icon, SchoolIcon } from "@hugeicons/core-free-icons";
+import { Avatar } from "@/components/ui/avatar";
+import { Icon } from "@/components/ui/icon";
 import { Answers } from "@/components/applicants/answers";
+import { ApplicantTime } from "@/components/applicants/applicant-time";
 import { Decision } from "@/components/applicants/decision";
 import { History } from "@/components/applicants/history";
 import { Notes } from "@/components/applicants/notes";
-import { StatusPill, stamp } from "@/components/applicants/status";
-import styles from "@/components/applicants/applicants.module.css";
+import { StatusPill } from "@/components/applicants/status";
+import styles from "@/components/applicants/applicant-detail.module.css";
 import type { Applicant } from "@/components/applicants/types";
 import { currentPerson } from "@/lib/api";
 import { Shell } from "../../shell";
@@ -64,83 +68,115 @@ export default async function OneApplicant({
   }
 
   const applicant = read.applicant;
+  const answers = applicant.answers ?? null;
 
   return (
     <Shell personId={person.personId}>
-      <Link href="/applicants" className="back">
-        ← Applicants
-      </Link>
-
-      <div className={styles.record}>
-        <div className={styles.person}>
-          <h1>{name(applicant)}</h1>
-          <StatusPill status={applicant.status} />
+      <div className={styles.page}>
+        <div className={styles.toolbar}>
+          <nav aria-label="Breadcrumb" className={styles.breadcrumb}>
+            <Link href="/applicants" className={styles.back}>
+              <Icon icon={ArrowLeft01Icon} size={18} />Applicants
+            </Link>
+            <span aria-hidden="true" className={styles.separator}>/</span>
+            <span aria-current="page">Application</span>
+          </nav>
         </div>
 
-        {/* The address as text, never in a link or a heading attribute. It is
-            what somebody typed into a public form. */}
-        <p className={styles.identity}>
-          {applicant.email}
-          {applicant.school ? ` · ${applicant.school}` : null}
-          {` · form v${applicant.formVersion}`}
-        </p>
+        <div className={styles.canvas}>
+          <header className={styles.record}>
+            <div className={styles.profile}>
+              <Avatar name={name(applicant)} email={applicant.email} appearance="soft" className={styles.avatar} />
+              <div className={styles.profileText}>
+                <div className={styles.person}>
+                  <h1>{name(applicant)}</h1>
+                  <StatusPill status={applicant.status} className={styles.status} />
+                </div>
 
-        <h2 className={styles.caption}>Dates (UTC)</h2>
-        <Dates applicant={applicant} />
-      </div>
+                {/* The address as text, never in a link or a heading attribute. It is
+                    what somebody typed into a public form. */}
+                <div className={styles.identity}>
+                  <span><Icon icon={Mail01Icon} size={16} />{applicant.email}</span>
+                  {applicant.school ? <span><Icon icon={SchoolIcon} size={16} />{applicant.school}</span> : null}
+                </div>
+                <Dates applicant={applicant} />
+              </div>
+            </div>
+          </header>
 
-      <div className={styles.split}>
-        <section className="panel">
-          <h2>Answers</h2>
-          {applicant.answers === null ? (
-            <p className={styles.refusal}>
-              You do not have <code>applications.view_responses</code>. Ask an
-              admin.
-            </p>
-          ) : (
-            <Answers answers={applicant.answers} />
-          )}
-        </section>
+          <nav className={styles.sectionNav} aria-label="Application sections">
+            <a href="#application-responses">Responses</a>
+            <a href="#application-review">Review</a>
+            <a href="#application-notes">Notes</a>
+            <a href="#application-activity">Activity</a>
+          </nav>
 
-        <div className={styles.rail}>
-          <section className="panel">
-            <h2>Status</h2>
-            {/*
-              Whether this reader may decide is known before the button is
-              drawn, so it is said before the button is pressed. The permission
-              set is a courtesy and never the gate — the API refuses the change
-              whoever asks — but a reader on logistics who picks a status,
-              writes a reason and then reads "you do not have
-              applications.decide" has been told the same thing a minute later
-              and lost the reason they typed.
-            */}
-            <Decision
-              id={applicant.id}
-              allowedNext={applicant.allowedNext}
-              canDecide={person.permissions.has("applications.decide")}
-            />
-          </section>
+          <div className={styles.split}>
+            <section className={`${styles.panel} ${styles.responses}`} id="application-responses" aria-labelledby="responses-heading">
+              <div className={styles.panelHead}>
+                <h2 id="responses-heading"><Icon icon={DocumentValidationIcon} size={20} />Responses</h2>
+                {answers !== null ? <span className={styles.count}>{answers.length} questions</span> : null}
+              </div>
+              {answers === null ? (
+                <p className={styles.refusal}>
+                  You do not have <code>applications.view_responses</code>. Ask an
+                  admin.
+                </p>
+              ) : (
+                <Answers answers={answers} />
+              )}
+            </section>
 
-          <section className="panel">
-            <h2>Resume</h2>
-            <Resume applicant={applicant} />
-          </section>
+            <aside className={styles.rail} aria-label="Application review">
+              <section className={styles.panel} id="application-review" aria-labelledby="review-heading">
+                <div className={styles.panelHead}>
+                  <h2 id="review-heading">Review application</h2>
+                </div>
+                {/*
+                  Whether this reader may decide is known before the button is
+                  drawn, so it is said before the button is pressed. The permission
+                  set is a courtesy and never the gate — the API refuses the change
+                  whoever asks — but a reader on logistics who picks a status,
+                  writes a reason and then reads "you do not have
+                  applications.decide" has been told the same thing a minute later
+                  and lost the reason they typed.
+                */}
+                <Decision
+                  id={applicant.id}
+                  allowedNext={applicant.allowedNext}
+                  canDecide={person.permissions.has("applications.decide")}
+                />
+              </section>
 
-          <section className="panel">
-            <h2>History</h2>
-            <History steps={applicant.history} />
-          </section>
+              <section className={styles.panel} aria-labelledby="resume-heading">
+                <div className={styles.panelHead}>
+                  <h2 id="resume-heading">Resume</h2>
+                </div>
+                <Resume applicant={applicant} />
+              </section>
 
-          <section className="panel">
-            <h2>Notes</h2>
-            {applicant.notes === null ? (
-              <p className={styles.refusal}>
-                You do not have <code>applications.note</code>. Ask an admin.
-              </p>
-            ) : (
-              <Notes id={applicant.id} notes={applicant.notes} />
-            )}
-          </section>
+              <section className={styles.panel} id="application-notes" aria-labelledby="notes-heading">
+                <div className={styles.panelHead}>
+                  <h2 id="notes-heading">Internal notes</h2>
+                  {applicant.notes !== null ? <span className={styles.count}>{applicant.notes.length}</span> : null}
+                </div>
+                {applicant.notes === null ? (
+                  <p className={styles.refusal}>
+                    You do not have <code>applications.note</code>. Ask an admin.
+                  </p>
+                ) : (
+                  <Notes id={applicant.id} notes={applicant.notes} />
+                )}
+              </section>
+
+              <section className={styles.panel} id="application-activity" aria-labelledby="activity-heading">
+                <div className={styles.panelHead}>
+                  <h2 id="activity-heading"><Icon icon={Clock01Icon} size={19} />Activity</h2>
+                </div>
+                <History steps={applicant.history} />
+              </section>
+            </aside>
+          </div>
         </div>
       </div>
     </Shell>
@@ -167,7 +203,10 @@ export default async function OneApplicant({
  */
 function Resume({ applicant }: { applicant: Applicant }) {
   if (!applicant.hasResume) {
-    return <p className="meta">No resume attached.</p>;
+    return <div className={styles.emptyAttachment}>
+      <span className={styles.fileIcon}><Icon icon={FileAttachmentIcon} size={22} /></span>
+      <p>No resume attached</p>
+    </div>;
   }
 
   if (applicant.resume === null) {
@@ -180,7 +219,7 @@ function Resume({ applicant }: { applicant: Applicant }) {
   }
 
   return (
-    <p className={styles.resume}>
+    <div className={styles.resume}>
       {/* target and rel together. The file is one a stranger uploaded, and a
           new tab that can reach back into this one is a way for it to. */}
       <a
@@ -189,13 +228,15 @@ function Resume({ applicant }: { applicant: Applicant }) {
         rel="noopener noreferrer"
         className={styles.filename}
       >
-        {applicant.resume.filename}
+        <span className={styles.fileIcon}><Icon icon={FileAttachmentIcon} size={22} /></span>
+        <span className={styles.fileDetails}>
+          <span>{applicant.resume.filename}</span>
+          <small>{applicant.resume.sizeBytes !== null ? `${kb(applicant.resume.sizeBytes)} · ` : ""}Open resume</small>
+        </span>
+        <Icon icon={ArrowUpRight01Icon} size={18} />
       </a>
-      {applicant.resume.sizeBytes !== null ? (
-        <span className="meta">{kb(applicant.resume.sizeBytes)}</span>
-      ) : null}
-      <span className="meta">Link expires in about five minutes.</span>
-    </p>
+      <p className={styles.fileExpiry}>Link expires in about five minutes.</p>
+    </div>
   );
 }
 
@@ -213,13 +254,13 @@ function Resume({ applicant }: { applicant: Applicant }) {
  */
 function Dates({ applicant }: { applicant: Applicant }) {
   const rows: [string, string | null][] = [
-    ["Started", stamp(applicant.createdAt)],
-    ["Submitted", stamp(applicant.submittedAt)],
-    ["Decided", stamp(applicant.decidedAt)],
-    ["RSVP by", stamp(applicant.rsvpDeadline)],
-    ["Confirmed", stamp(applicant.confirmedAt)],
-    ["Declined", stamp(applicant.declinedAt)],
-    ["Checked in", stamp(applicant.checkedInAt)],
+    ["Started", applicant.createdAt],
+    ["Submitted", applicant.submittedAt],
+    ["Decided", applicant.decidedAt],
+    ["RSVP by", applicant.rsvpDeadline],
+    ["Confirmed", applicant.confirmedAt],
+    ["Declined", applicant.declinedAt],
+    ["Checked in", applicant.checkedInAt],
   ];
 
   return (
@@ -229,9 +270,10 @@ function Dates({ applicant }: { applicant: Applicant }) {
         .map(([what, at]) => (
           <div key={what}>
             <dt>{what}</dt>
-            <dd>{at}</dd>
+            <dd><ApplicantTime value={at!} /></dd>
           </div>
         ))}
+      <div><dt>Form</dt><dd>v{applicant.formVersion}</dd></div>
     </dl>
   );
 }

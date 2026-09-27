@@ -113,8 +113,13 @@ public static class CampaignEndpoints
                  .RequirePermission(Permission.EmailViewStats);
         campaigns.MapGet("/{id:guid}", One)
                  .RequirePermission(Permission.EmailViewStats);
+        campaigns.MapGet("/{id:guid}/recipients", Recipients)
+                 .RequirePermission(Permission.EmailViewStats)
+                 .RequirePermission(Permission.EmailManageTemplates);
 
         campaigns.MapPost("", Create)
+                 .RequirePermission(Permission.EmailManageTemplates);
+        campaigns.MapPut("/{id:guid}", Update)
                  .RequirePermission(Permission.EmailManageTemplates);
         campaigns.MapPost("/{id:guid}/preview", Preview)
                  .RequirePermission(Permission.EmailManageTemplates);
@@ -155,7 +160,13 @@ public static class CampaignEndpoints
     /// </para>
     /// </remarks>
     public sealed record CreateCampaignRequest(
-        string? Name, string? TemplateKey, JsonElement? Segment);
+        string? Name, string? TemplateKey, JsonElement? Segment, bool? TrackingEnabled = null);
+
+    public sealed record UpdateCampaignRequest(
+        string? Name, string? Subject, string? PreviewText, string? FromName, string? FromEmail,
+        string? ReplyTo, bool? TrackingEnabled, JsonElement? Segment, int? Revision);
+
+    public sealed record SendCampaignRequest(int? Revision);
 
     // ------------------------------------------------------------- reading ---
 
@@ -168,17 +179,57 @@ public static class CampaignEndpoints
     /// the end of registration week this table is overwhelmingly login links,
     /// and the store filters them out on <c>created_by</c>. A magic link has no
     /// author; a broadcast always has one, and now has two.
-    /// <para>
-    /// No message counts. This is a list of forty rows and counting each one's
-    /// messages is forty grouped scans to draw a screen whose job is to let
-    /// somebody click the right campaign. <see cref="One"/> is where progress
-    /// is counted.
-    /// </para>
     /// </remarks>
-    private static async Task<IResult> List(CampaignStore campaigns, CancellationToken ct)
+    private static async Task<IResult> List(
+        int? page, string? search, string? status, string? sort, HttpContext http,
+        CampaignStore campaigns, EmailAnalyticsStore analytics, PermissionService permissions, CancellationToken ct)
     {
-        var listed = await campaigns.ListAsync(ct: ct);
-        return Results.Ok(new { campaigns = listed.Select(Describe) });
+        search = search?.Trim() ?? "";
+        status ??= "all";
+        sort ??= "newest";
+        if (page is < 1 || search.Length > 200
+            || status is not ("all" or "draft" or "queued" or "sending" or "sent" or "failed" or "cancelled")
+            || sort is not ("newest" or "oldest" or "name"))
+            return Results.BadRequest(new { error = "Invalid campaign filters." });
+        var listed = await campaigns.ReadPageAsync(page ?? 1, 10, search, status, sort, ct);
+        var effective = await permissions.ForAsync(http.PersonId(), ct);
+        var summaries = await analytics.ReadListSummariesAsync(
+            listed.Items.Select(c => c.Id).ToArray(), effective.Can(Permission.EmailManageTemplates), ct);
+        return Results.Ok(new
+        {
+            campaigns = listed.Items.Select(c => new
+            {
+                c.Id,
+                c.Name,
+                c.Status,
+                c.TemplateKey,
+                c.TrackingEnabled,
+                c.RecipientCount,
+                c.CreatedAt,
+                c.QueuedAt,
+                c.CompletedAt,
+                audience = ListAudience(c),
+                summary = summaries.GetValueOrDefault(c.Id),
+            }),
+            listed.Total,
+            listed.Counts,
+            listed.Page,
+            listed.PageSize,
+        });
+    }
+
+    private static object? ListAudience(Campaign campaign)
+    {
+        var segment = Stored(campaign.Segment);
+        if (segment is not { } value || !value.TryGetProperty("type", out var type)) return null;
+        return new
+        {
+            type = type.GetString(),
+            sourceId = value.TryGetProperty("eventId", out var eventId) ? eventId.GetString()
+                : value.TryGetProperty("formId", out var formId) ? formId.GetString() : null,
+            statuses = value.TryGetProperty("statuses", out var statuses) ? statuses.Deserialize<string[]>() : null,
+            count = value.TryGetProperty("emails", out var emails) ? (int?)emails.GetArrayLength() : null,
+        };
     }
 
     /// <summary>
@@ -209,6 +260,7 @@ public static class CampaignEndpoints
         Guid id,
         HttpContext http,
         CampaignStore campaigns,
+        EmailAnalyticsStore analytics,
         PermissionService permissions,
         CancellationToken ct)
     {
@@ -226,16 +278,36 @@ public static class CampaignEndpoints
         // preview because after a send this is the only place the question
         // "who did we actually mail" has an answer at all — the segment
         // resolves to somebody else by then.
-        var sample = effective.Can(Permission.EmailManageTemplates)
-            ? await campaigns.SampleAsync(id, SampleSize, ct)
+        var recipients = effective.Can(Permission.EmailManageTemplates)
+            ? await campaigns.ReadRecipientsAsync(id, ct: ct)
             : null;
+        var engagement = await analytics.ReadCampaignAsync(id, effective.Can(Permission.EmailManageTemplates), ct);
 
         return Results.Ok(new
         {
             campaign = Describe(campaign),
+            settings = effective.Can(Permission.EmailManageTemplates) ? campaign.Settings : null,
             messages = Describe(progress),
-            sample,
+            sample = recipients?.Items.Select(recipient => recipient.Email),
+            recipients,
+            analytics = engagement,
         });
+    }
+
+    private static async Task<IResult> Recipients(
+        Guid id, int? page, CampaignStore campaigns, CancellationToken ct)
+    {
+        if (page is < 1)
+        {
+            return Results.BadRequest(new { error = "Page must be at least 1." });
+        }
+
+        if (await campaigns.FindAsync(id, ct) is null)
+        {
+            return Results.NotFound(new { error = "No such campaign." });
+        }
+
+        return Results.Ok(await campaigns.ReadRecipientsAsync(id, page ?? 1, ct));
     }
 
     // ------------------------------------------------------------ drafting ---
@@ -303,30 +375,80 @@ public static class CampaignEndpoints
             });
         }
 
-        if (request?.Segment is not { } json)
-        {
-            return Results.BadRequest(new { error = "A campaign needs a segment to send to." });
-        }
-
-        if (!Segment.TryParse(json, out var segment, out var wrong))
+        Segment? segment = null;
+        if (request?.Segment is { ValueKind: not JsonValueKind.Null } json
+            && !Segment.TryParse(json, out segment, out var wrong))
         {
             return Results.BadRequest(new { error = wrong });
         }
 
-        var unfillable = Unfillable(template, segment!);
+        var unfillable = segment is null ? null : Unfillable(template, segment);
         if (unfillable is not null)
         {
             return Results.BadRequest(new { error = unfillable });
         }
 
         var campaign = await campaigns.CreateDraftAsync(
-            template.Id, name, segment!.ToJson(), EventOf(segment), http.PersonId(), ct);
+            template.Id, name, segment?.ToJson(), segment is null ? null : EventOf(segment), http.PersonId(), ct,
+            request?.TrackingEnabled ?? template.ClickTracking);
 
         log.LogInformation(
             "A broadcast was drafted. {actor} {campaign} {segment} {event}",
-            http.PersonId(), campaign.Id, segment.Type, Events.CampaignCreated);
+            http.PersonId(), campaign.Id, segment?.Type, Events.CampaignCreated);
 
         return Results.Created($"/admin/campaigns/{campaign.Id}", Describe(campaign));
+    }
+
+    private static async Task<IResult> Update(
+        Guid id, UpdateCampaignRequest? request, HttpContext http,
+        CampaignStore campaigns, TemplateStore templates, CancellationToken ct)
+    {
+        var campaign = await campaigns.FindAsync(id, ct);
+        if (campaign is null) return Results.NotFound(new { error = "No such campaign." });
+        if (!campaign.IsDraft) return Results.Conflict(new { error = "Only a draft campaign can be edited." });
+        if (request?.Revision is null or < 0) return Results.BadRequest(new { error = "Reload the campaign before saving." });
+        if (request.Revision != campaign.Revision)
+            return Results.Conflict(new { error = "This campaign changed in another session. Reload before saving." });
+
+        var name = request.Name?.Trim() ?? "";
+        var subject = request.Subject?.Trim() ?? "";
+        var previewText = request.PreviewText?.Trim() ?? "";
+        var fromName = request.FromName?.Trim() ?? "";
+        var fromEmail = request.FromEmail?.Trim() ?? "";
+        var replyTo = request.ReplyTo?.Trim() ?? "";
+        if (name.Length is 0 or > MaxNameLength || name.Any(char.IsControl))
+            return Results.BadRequest(new { error = "Use a campaign name of 1–200 characters." });
+        if (subject.Length is 0 or > 200 || subject.Any(char.IsControl))
+            return Results.BadRequest(new { error = "Use a subject of 1–200 characters without line breaks." });
+        if (previewText.Length > 200 || previewText.Any(char.IsControl))
+            return Results.BadRequest(new { error = "Keep preview text to 200 characters without line breaks." });
+        if (fromName.Length > 0 && !TemplateEndpoints.IsSenderName(fromName))
+            return Results.BadRequest(new { error = "Use a sender name of up to 64 plain-text characters, without quotes or angle brackets." });
+        if (!TemplateEndpoints.IsAddress(fromEmail))
+            return Results.BadRequest(new { error = "Enter a valid sender email address." });
+        if (replyTo.Length > 0 && !TemplateEndpoints.IsAddress(replyTo))
+            return Results.BadRequest(new { error = "Enter a valid reply-to email address." });
+        if (request.TrackingEnabled is null)
+            return Results.BadRequest(new { error = "Choose whether to enable email tracking." });
+        Segment? segment = null;
+        if (request.Segment is { ValueKind: not JsonValueKind.Null } json && !Segment.TryParse(json, out segment, out _))
+            return Results.BadRequest(new { error = "Choose a valid campaign audience." });
+
+        var template = await templates.FindAsync(campaign.TemplateKey, ct);
+        if (template is null || template.Id != campaign.TemplateId)
+            return Results.Conflict(new { error = MissingTemplate });
+        if (!fromEmail[(fromEmail.LastIndexOf('@') + 1)..].Equals(template.FromDomain, StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { error = $"Use a sender address on {template.FromDomain}, the sending domain for this template." });
+        var settings = new CampaignEmailSettings(subject, previewText, fromName, fromEmail, replyTo);
+        if (segment is not null && Unfillable(settings.Apply(template), segment) is { } problem)
+            return Results.BadRequest(new { error = problem });
+
+        if (!await campaigns.UpdateDraftAsync(id, campaign.Revision, name, settings, segment?.ToJson(),
+                segment is null ? null : EventOf(segment), request.TrackingEnabled.Value, http.PersonId(), ct))
+            return Results.Conflict(new { error = "This campaign changed in another session. Reload before saving." });
+
+        var updated = (await campaigns.FindAsync(id, ct))!;
+        return Results.Ok(new { campaign = Describe(updated), settings = updated.Settings });
     }
 
     /// <summary>
@@ -405,6 +527,7 @@ public static class CampaignEndpoints
         // the one who can still fix a template that greets people by a name
         // the segment does not carry; the approver behind them cannot.
         var template = await templates.FindAsync(campaign.TemplateKey, ct);
+        if (template is not null && campaign.Settings is not null) template = campaign.Settings.Apply(template);
         var problems = new List<string>();
 
         if (template is null || template.Id != campaign.TemplateId)
@@ -434,6 +557,7 @@ public static class CampaignEndpoints
         return Results.Ok(new
         {
             campaignId = campaign.Id,
+            revision = campaign.Revision,
             segmentSize = resolved.Members.Count,
 
             // The number that matters: people who will receive something.
@@ -537,6 +661,7 @@ public static class CampaignEndpoints
     /// </remarks>
     private static async Task<IResult> Send(
         Guid id,
+        SendCampaignRequest? request,
         HttpContext http,
         CampaignStore campaigns,
         TemplateStore templates,
@@ -564,7 +689,9 @@ public static class CampaignEndpoints
         }
 
         var actor = http.PersonId();
-        if (campaign.CreatedBy == actor)
+        if (request?.Revision is { } revision && revision != campaign.Revision)
+            return Results.Conflict(new { error = "The campaign changed since your preview. Review it again before sending." });
+        if (campaign.CreatedBy == actor || campaign.UpdatedBy == actor)
         {
             // 403, and the copy says what to do rather than only what is
             // wrong. Somebody hitting this is not doing anything suspicious —
@@ -574,7 +701,7 @@ public static class CampaignEndpoints
                 new
                 {
                     error = "A broadcast has to be sent by somebody other than the "
-                            + "person who wrote it. Ask another organizer with "
+                            + "person who wrote or last edited it. Ask another organizer with "
                             + "broadcast permission to send this one.",
                 },
                 statusCode: StatusCodes.Status403Forbidden);
@@ -609,6 +736,8 @@ public static class CampaignEndpoints
                         + "broadcast. Choose a broadcast template.",
             });
         }
+
+        if (campaign.Settings is not null) template = campaign.Settings.Apply(template);
 
         if (!TryStored(campaign, out var segment, out var unreadable))
         {
@@ -654,15 +783,21 @@ public static class CampaignEndpoints
             return new BroadcastRecipient(
                 member.PersonId, member.Email,
                 rendered.Subject, rendered.BodyHtml, rendered.BodyText,
-                Suppressed: suppressed.ContainsKey(member.Email));
+                Suppressed: suppressed.ContainsKey(member.Email),
+                FirstName: member.Fields.GetValueOrDefault("first_name") as string,
+                LastName: member.Fields.GetValueOrDefault("last_name") as string);
         }).ToList();
 
-        var outcome = await campaigns.QueueAsync(id, actor, recipients, ct);
+        var outcome = await campaigns.QueueAsync(id, actor, recipients, ct,
+            campaign.Revision, CampaignEmailSettings.From(template));
 
         switch (outcome.Result)
         {
             case QueueResult.NoSuchCampaign:
                 return Results.NotFound(new { error = "No such campaign." });
+
+            case QueueResult.Changed:
+                return Results.Conflict(new { error = "The campaign changed while preparing the send. Review it again." });
 
             case QueueResult.AlreadyLeftDraft:
                 // Somebody — possibly a second click on the same button —
@@ -1005,6 +1140,12 @@ public static class CampaignEndpoints
         segment = null;
         refusal = Results.Ok();
 
+        if (campaign.IsDraft && campaign.Segment is null)
+        {
+            refusal = Results.BadRequest(new { error = "Choose an audience before previewing or sending this campaign." });
+            return false;
+        }
+
         if (campaign.Segment is { } stored)
         {
             try
@@ -1049,6 +1190,9 @@ public static class CampaignEndpoints
         status = campaign.Status,
         templateKey = campaign.TemplateKey,
         templateKind = campaign.TemplateKind,
+        trackingEnabled = campaign.TrackingEnabled,
+        revision = campaign.Revision,
+        updatedBy = campaign.UpdatedBy,
         eventId = campaign.EventId,
 
         // Handed back as JSON rather than as a string, so the console can put

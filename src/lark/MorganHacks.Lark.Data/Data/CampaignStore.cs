@@ -1,8 +1,12 @@
 using MorganHacks.Lark.Data.Domain;
+using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace MorganHacks.Lark.Data.Data;
+
+public sealed record CampaignListPage(
+    IReadOnlyList<Campaign> Items, long Total, IReadOnlyDictionary<string, long> Counts, int Page, int PageSize);
 
 /// <summary>
 /// Broadcasts, in Postgres.
@@ -23,6 +27,7 @@ namespace MorganHacks.Lark.Data.Data;
 /// </remarks>
 public sealed class CampaignStore(NpgsqlDataSource dataSource)
 {
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     /// <summary>
     /// Broadcast priority, written literally rather than derived.
     /// </summary>
@@ -70,6 +75,43 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
         }
 
         return campaigns;
+    }
+
+    public async Task<CampaignListPage> ReadPageAsync(
+        int page, int pageSize, string search, string status, string sort, CancellationToken ct = default)
+    {
+        await using var countsCommand = dataSource.CreateCommand("""
+            SELECT status, count(*) FROM notify.campaigns
+             WHERE created_by IS NOT NULL AND strpos(lower(name), lower(@search)) > 0
+             GROUP BY status
+            """);
+        countsCommand.Parameters.AddWithValue("search", search);
+        var counts = new Dictionary<string, long>();
+        await using (var reader = await countsCommand.ExecuteReaderAsync(ct))
+            while (await reader.ReadAsync(ct)) counts[reader.GetString(0)] = reader.GetInt64(1);
+        var total = status == "all" ? counts.Values.Sum() : counts.GetValueOrDefault(status);
+        page = Math.Clamp(page, 1, (int)Math.Max(1, Math.Ceiling((double)total / pageSize)));
+        var order = sort switch
+        {
+            "oldest" => "c.created_at ASC, c.id ASC",
+            "name" => "lower(c.name) ASC, c.created_at DESC, c.id DESC",
+            _ => "c.created_at DESC, c.id DESC",
+        };
+        await using var command = dataSource.CreateCommand($"""
+            {Projection}
+             WHERE c.created_by IS NOT NULL AND strpos(lower(c.name), lower(@search)) > 0
+               AND (@status = 'all' OR c.status = @status)
+             ORDER BY {order}
+             LIMIT @limit OFFSET @offset
+            """);
+        command.Parameters.AddWithValue("search", search);
+        command.Parameters.AddWithValue("status", status);
+        command.Parameters.AddWithValue("limit", pageSize);
+        command.Parameters.AddWithValue("offset", (page - 1) * pageSize);
+        var items = new List<Campaign>();
+        await using (var reader = await command.ExecuteReaderAsync(ct))
+            while (await reader.ReadAsync(ct)) items.Add(Read(reader));
+        return new CampaignListPage(items, total, counts, page, pageSize);
     }
 
     public async Task<Campaign?> FindAsync(Guid id, CancellationToken ct = default)
@@ -138,6 +180,41 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
         }
 
         return emails;
+    }
+
+    public async Task<CampaignRecipientPage> ReadRecipientsAsync(
+        Guid id, int page = 1, CancellationToken ct = default)
+    {
+        const int pageSize = 10;
+        await using var count = dataSource.CreateCommand(
+            "SELECT count(*) FROM notify.messages WHERE campaign_id = @id");
+        count.Parameters.AddWithValue("id", id);
+        var total = checked((int)(long)(await count.ExecuteScalarAsync(ct))!);
+        page = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)));
+
+        await using var cmd = dataSource.CreateCommand("""
+            SELECT id, to_email, recipient_first_name, recipient_last_name, sent_at
+              FROM notify.messages
+             WHERE campaign_id = @id
+             ORDER BY to_email, id
+             LIMIT @limit OFFSET @offset
+            """);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("limit", pageSize);
+        cmd.Parameters.AddWithValue("offset", (page - 1) * pageSize);
+
+        var recipients = new List<CampaignRecipient>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            recipients.Add(new CampaignRecipient(
+                reader.GetGuid(0), reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetFieldValue<DateTimeOffset>(4)));
+        }
+
+        return new CampaignRecipientPage(recipients, page, pageSize, total);
     }
 
     /// <summary>
@@ -226,24 +303,30 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
     public async Task<Campaign> CreateDraftAsync(
         Guid templateId,
         string name,
-        string segment,
+        string? segment,
         Guid? eventId,
         Guid createdBy,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool? trackingEnabled = null)
     {
         const string sql = """
             INSERT INTO notify.campaigns
-                (template_id, name, segment, event_id, created_by, status)
-            VALUES (@templateId, @name, @segment, @eventId, @createdBy, 'draft')
+                (template_id, name, segment, event_id, created_by, status, tracking_enabled, email_settings)
+            SELECT @templateId, @name, @segment, @eventId, @createdBy, 'draft', @tracking,
+                   jsonb_build_object('subject', subject, 'previewText', COALESCE(preview_text, ''),
+                       'fromName', COALESCE(from_name, ''), 'fromEmail', from_local || '@' || from_domain,
+                       'replyTo', COALESCE(reply_to, ''))
+              FROM notify.templates WHERE id = @templateId
             RETURNING id
             """;
 
         await using var cmd = dataSource.CreateCommand(sql);
         cmd.Parameters.AddWithValue("templateId", templateId);
         cmd.Parameters.AddWithValue("name", name);
-        cmd.Parameters.Add(new NpgsqlParameter("segment", NpgsqlDbType.Jsonb) { Value = segment });
+        cmd.Parameters.Add(new NpgsqlParameter("segment", NpgsqlDbType.Jsonb) { Value = (object?)segment ?? DBNull.Value });
         cmd.Parameters.AddWithValue("eventId", (object?)eventId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("createdBy", createdBy);
+        cmd.Parameters.AddWithValue("tracking", NpgsqlDbType.Boolean, (object?)trackingEnabled ?? DBNull.Value);
 
         var id = (Guid)(await cmd.ExecuteScalarAsync(ct))!;
 
@@ -252,6 +335,28 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
         // and all — instead of an object that will diverge from it the first
         // time a default changes.
         return (await FindAsync(id, ct))!;
+    }
+
+    public async Task<bool> UpdateDraftAsync(
+        Guid id, int revision, string name, CampaignEmailSettings settings, string? segment,
+        Guid? eventId, bool trackingEnabled, Guid actor, CancellationToken ct = default)
+    {
+        await using var cmd = dataSource.CreateCommand("""
+            UPDATE notify.campaigns
+               SET name = @name, email_settings = @settings, segment = @segment,
+                   event_id = @eventId, tracking_enabled = @tracking,
+                   revision = revision + 1, updated_by = @actor
+             WHERE id = @id AND status = 'draft' AND revision = @revision AND created_by IS NOT NULL
+            """);
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("revision", revision);
+        cmd.Parameters.AddWithValue("name", name);
+        cmd.Parameters.AddWithValue("settings", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(settings, Json));
+        cmd.Parameters.AddWithValue("segment", NpgsqlDbType.Jsonb, (object?)segment ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("eventId", NpgsqlDbType.Uuid, (object?)eventId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("tracking", trackingEnabled);
+        cmd.Parameters.AddWithValue("actor", actor);
+        return await cmd.ExecuteNonQueryAsync(ct) == 1;
     }
 
     /// <summary>
@@ -293,15 +398,18 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
         Guid campaignId,
         Guid approvedBy,
         IReadOnlyList<BroadcastRecipient> recipients,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? expectedRevision = null,
+        CampaignEmailSettings? settings = null)
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
 
         const string claim = """
             UPDATE notify.campaigns
-               SET status = 'queued', approved_by = @approvedBy, queued_at = now()
-             WHERE id = @id AND status = 'draft'
+               SET status = 'queued', approved_by = @approvedBy, queued_at = now(),
+                   email_settings = COALESCE(@settings, email_settings)
+             WHERE id = @id AND status = 'draft' AND (@revision IS NULL OR revision = @revision)
             RETURNING id
             """;
 
@@ -309,15 +417,16 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
         {
             cmd.Parameters.AddWithValue("id", campaignId);
             cmd.Parameters.AddWithValue("approvedBy", approvedBy);
+            cmd.Parameters.AddWithValue("revision", NpgsqlDbType.Integer, (object?)expectedRevision ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("settings", NpgsqlDbType.Jsonb,
+                settings is null ? DBNull.Value : JsonSerializer.Serialize(settings, Json));
 
             if (await cmd.ExecuteScalarAsync(ct) is null)
             {
                 await transaction.RollbackAsync(ct);
-                return new QueueOutcome(
-                    await ExistsAsync(campaignId, ct)
-                        ? QueueResult.AlreadyLeftDraft
-                        : QueueResult.NoSuchCampaign,
-                    0, 0);
+                var current = await FindAsync(campaignId, ct);
+                return new QueueOutcome(current is null ? QueueResult.NoSuchCampaign
+                    : current.IsDraft ? QueueResult.Changed : QueueResult.AlreadyLeftDraft, 0, 0);
             }
         }
 
@@ -328,13 +437,15 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
         const string insert = """
             INSERT INTO notify.messages
                 (campaign_id, person_id, to_email, priority, status,
-                 rendered_subject, rendered_body_html, rendered_body_text)
+                 rendered_subject, rendered_body_html, rendered_body_text,
+                 recipient_first_name, recipient_last_name)
             SELECT @campaignId, r.person_id, r.email, @priority,
                    CASE WHEN r.suppressed THEN 'suppressed' ELSE 'pending' END,
-                   r.subject, r.html, r.body
+                   r.subject, r.html, r.body, r.first_name, r.last_name
               FROM unnest(@personIds::uuid[], @emails::text[], @subjects::text[],
-                          @htmls::text[], @bodies::text[], @suppressed::boolean[])
-                   AS r(person_id, email, subject, html, body, suppressed)
+                          @htmls::text[], @bodies::text[], @suppressed::boolean[],
+                          @firstNames::text[], @lastNames::text[])
+                   AS r(person_id, email, subject, html, body, suppressed, first_name, last_name)
             ON CONFLICT DO NOTHING
             """;
 
@@ -354,6 +465,10 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
                 recipients.Select(r => r.BodyText).ToArray());
             Array(cmd, "suppressed", NpgsqlDbType.Boolean,
                 recipients.Select(r => r.Suppressed).ToArray());
+            Array(cmd, "firstNames", NpgsqlDbType.Text,
+                recipients.Select(r => (object?)r.FirstName ?? DBNull.Value).ToArray());
+            Array(cmd, "lastNames", NpgsqlDbType.Text,
+                recipients.Select(r => (object?)r.LastName ?? DBNull.Value).ToArray());
 
             await cmd.ExecuteNonQueryAsync(ct);
         }
@@ -480,7 +595,8 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
     private const string Projection = """
         SELECT c.id, c.name, c.status, c.template_id, t.key, t.kind,
                c.event_id, c.segment, c.recipient_count,
-               c.created_by, c.approved_by, c.queued_at, c.completed_at, c.created_at
+               c.created_by, c.approved_by, c.queued_at, c.completed_at, c.created_at,
+               COALESCE(c.tracking_enabled, t.click_tracking), c.email_settings, c.revision, c.updated_by
           FROM notify.campaigns c
           JOIN notify.templates t ON t.id = c.template_id
         """;
@@ -495,7 +611,9 @@ public sealed class CampaignStore(NpgsqlDataSource dataSource)
         r.IsDBNull(10) ? null : r.GetGuid(10),
         r.IsDBNull(11) ? null : r.GetFieldValue<DateTimeOffset>(11),
         r.IsDBNull(12) ? null : r.GetFieldValue<DateTimeOffset>(12),
-        r.GetFieldValue<DateTimeOffset>(13));
+        r.GetFieldValue<DateTimeOffset>(13), r.GetBoolean(14),
+        r.IsDBNull(15) ? null : JsonSerializer.Deserialize<CampaignEmailSettings>(r.GetString(15), Json),
+        r.GetInt32(16), r.IsDBNull(17) ? null : r.GetGuid(17));
 
     private static void Array(
         NpgsqlCommand cmd, string name, NpgsqlDbType element, System.Array values) =>

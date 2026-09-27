@@ -121,6 +121,7 @@ public class SendLoopTests(NotifyDatabase db) : IClassFixture<NotifyDatabase>
         var sent = Assert.Single(provider.Sent, message => message.Id == id);
         Assert.Contains("https://api.example.invalid/api/email/click/", sent.BodyHtml);
         Assert.Contains("https://api.example.invalid/api/email/click/", sent.BodyText);
+        Assert.Contains("https://api.example.invalid/api/email/open/", sent.BodyHtml);
         Assert.Equal("sent", (await db.StateOf(id)).Status);
     }
 

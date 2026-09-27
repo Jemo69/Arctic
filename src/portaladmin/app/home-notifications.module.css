@@ -121,8 +121,7 @@
 .trigger:focus-visible,
 .close:focus-visible,
 .filter:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline: none;
 }
 
 @media (pointer: coarse) {

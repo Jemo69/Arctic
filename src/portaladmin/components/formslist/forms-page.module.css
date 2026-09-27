@@ -108,11 +108,11 @@
 .questionCount > span { display: none; }
 .linkCell { min-width: 0; }
 .copyWrap { display: block; position: relative; min-width: 0; }
-.copyRow { display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 38px; padding: 3px 4px 3px 10px; border-radius: 9px; background: var(--field); color: var(--muted); }
+.copyRow { display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 38px; padding: 3px 4px 3px 12px; border-radius: 999px; background: var(--field); color: var(--muted); }
 .copyRow > svg { flex-shrink: 0; }
 .address { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; }
 .address strong { color: var(--ink); font-weight: 500; }
-.copyButton { flex-shrink: 0; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); }
+.copyButton { flex-shrink: 0; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--muted); }
 .copyButton:hover { background: var(--raised); color: var(--ink); }
 .copyFeedback { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .copyFeedback[data-failed="true"] { position: static; display: block; width: auto; height: auto; margin-top: 6px; overflow: visible; clip-path: none; color: var(--stop); font-size: 11px; overflow-wrap: anywhere; }
@@ -153,7 +153,7 @@
 .formHint { margin: 12px 0 0; color: var(--faint); font-size: 11px; }
 .error { margin: 18px 0 0; color: var(--stop); font-size: 13px; }
 .dialogActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 26px; }
-.page button:focus-visible, .page a:focus-visible, .dialog button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.page button:focus-visible, .page a:focus-visible, .dialog button:focus-visible { outline: none; }
 @container (max-width: 1120px) {
   .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

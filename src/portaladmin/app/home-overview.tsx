@@ -1,6 +1,8 @@
 "use client";
 
 import { ErrorToast } from "@/components/ui/error-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BarsSkeleton, ListBodySkeleton } from "@/components/ui/page-skeleton";
 
 import { Select } from "@/components/ui/select";
 import { useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
@@ -31,8 +33,8 @@ const applicantTabs = [
 function Stat({ label, value, note, tone }: { label: string; value: number | null; note: string; tone: AnalyticsTone }) {
   return <section className={styles.stat} data-tone={tone}>
     <p>{label}</p>
-    <strong>{value === null ? "—" : numbers.format(value)}</strong>
-    <span>{note}</span>
+    <strong>{value === null ? <Skeleton width={64} height={38} /> : numbers.format(value)}</strong>
+    <span>{value === null ? <Skeleton width={180} height={12} /> : note}</span>
   </section>;
 }
 
@@ -55,7 +57,7 @@ function Breakdown({ title, subtitle, items, total, empty, icon, loading, limit 
         <div className={styles.barTrack} aria-hidden="true"><span className={item.label === "Not provided" ? styles.unknown : ""}
           style={{ width: `${Math.min(100, item.count / total * 100)}%`, backgroundColor: colors?.[item.label] ?? categoryColor(item.label) }} /></div>
       </li>)}
-    </ol> : loading ? <div className={styles.loadingEmpty}><p>{empty}</p></div>
+    </ol> : loading ? <BarsSkeleton label={`Loading ${title.toLowerCase()}…`} />
       : <EmptyState variant="data" className={styles.breakdownEmpty} title={schools ? "No schools yet" : "No data to display"} description={empty} />}
     {items.length > limit ? <button type="button" className={styles.textButton} onClick={onViewAll ?? (() => setExpanded(!expanded))}>
       {onViewAll ? <>View all schools<Icon icon={ArrowRight01Icon} size={15} /></> : expanded ? "Show less" : `Show all ${numbers.format(items.length)}`}
@@ -83,7 +85,7 @@ function Attention({ analytics, eventId, loading }: { analytics: ApplicantAnalyt
         <span><strong>{item.title}</strong><small>{item.note}</small></span>
         <b>{numbers.format(item.count)}</b><Icon icon={ArrowRight01Icon} size={15} />
       </Link>
-    </li>)}</ul> : loading ? <div className={styles.loadingEmpty}><p>Loading applications…</p></div>
+    </li>)}</ul> : loading ? <ListBodySkeleton kind="people" rows={3} header={false} label="Loading applications…" />
       : <EmptyState variant="files" className={styles.attentionEmpty} title={!eventId ? "A clear starting point" : "You’re all caught up"}
         description={!eventId
         ? "Once applications arrive, we’ll show you what needs a closer look."

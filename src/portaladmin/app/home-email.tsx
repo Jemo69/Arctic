@@ -1,5 +1,6 @@
 import { Mail01Icon, Link01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
+import { EmailMetricsSkeleton } from "@/components/ui/page-skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { apiFetch } from "@/lib/api";
 import { numbers, percentage } from "./home-analytics";
@@ -25,7 +26,7 @@ export function HomeEmailView({ data, error }: { data?: EmailAnalytics; error?: 
       <Icon icon={Mail01Icon} size={19} className={styles.sectionIcon} />
     </div>
     {error ? <p className={styles.dataNote}>Email analytics couldn’t load. Try refreshing the dashboard.</p>
-      : <div className={styles.emailGrid}>
+      : !data ? <EmailMetricsSkeleton /> : <div className={styles.emailGrid}>
         <div>
           <div className={styles.emailStats}>
             <div><span>Link clicks</span><strong>{data ? numbers.format(data.totalClicks) : "—"}</strong>

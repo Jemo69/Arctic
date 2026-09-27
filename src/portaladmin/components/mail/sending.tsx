@@ -1,6 +1,8 @@
 "use client";
 
 import { ErrorToast } from "@/components/ui/error-toast";
+import { Cancel01Icon, Clock01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/ui/icon";
 
 import { useState, useTransition, type ReactNode } from "react";
 import type {
@@ -10,7 +12,6 @@ import type {
 } from "@/app/mail/actions";
 import styles from "./mail.module.css";
 import { Message } from "./message";
-import { StatusPill } from "./status";
 import {
   when,
   type Campaign,
@@ -49,6 +50,9 @@ export function Sending({
   me,
   messages,
   facts,
+  recipients,
+  metrics,
+  reports,
   preview,
   send,
   cancel,
@@ -62,6 +66,9 @@ export function Sending({
   /** What happened to the messages, once there are any. Null on a draft. */
   messages: MessageProgress | null;
   facts: ReactNode;
+  recipients: ReactNode;
+  metrics: ReactNode;
+  reports: ReactNode;
   preview: () => Promise<PreviewResult>;
   send: (seen: number) => Promise<SendResult>;
   cancel: () => Promise<CancelResult>;
@@ -159,25 +166,30 @@ export function Sending({
     <>
       <Approval campaign={campaign} me={me} refused={refused} />
 
-      <div className={styles.layout}>
-        {facts}
-
+      <div className={styles.layout} data-has-sample={Boolean(recipients)} data-draft={status === "draft"}>
         {status !== "draft" ? (
-          <Outcome
-            campaign={campaign}
-            status={status}
-            count={resolved?.recipientCount ?? campaign.recipientCount}
-            messages={messages}
-            canSend={canSend}
-            asked={asked}
-            pending={pending}
-            error={error}
-            ask={() => setAsked(true)}
-            unask={() => setAsked(false)}
-            confirm={runCancel}
-          />
+          <>
+            {facts}
+            <Outcome
+              campaign={campaign}
+              status={status}
+              count={resolved?.recipientCount ?? campaign.recipientCount}
+              messages={messages}
+              metrics={metrics}
+              canSend={canSend}
+              asked={asked}
+              pending={pending}
+              error={error}
+              ask={() => setAsked(true)}
+              unask={() => setAsked(false)}
+              confirm={runCancel}
+            />
+            {reports}
+            {recipients}
+          </>
         ) : (
           <>
+            {facts}
             <section className={styles.card}>
               <div className={styles.cardHead}>
                 <h2>
@@ -337,15 +349,13 @@ function Approval({
       <div className={styles.approvalWho}>
         {author ? (
           <span>
-            Created by <code>{shortId(author)}</code>
-            {author === me ? " (you)" : ""}
+            Created by <strong title={author}>{author === me ? "You" : `Organizer ${shortId(author)}`}</strong>
           </span>
         ) : null}
 
         {approver ? (
           <span>
-            Approved by <code>{shortId(approver)}</code>
-            {approver === me ? " (you)" : ""}
+            Approved by <strong title={approver}>{approver === me ? "You" : `Organizer ${shortId(approver)}`}</strong>
           </span>
         ) : null}
       </div>
@@ -444,6 +454,7 @@ function Outcome({
   status,
   count,
   messages,
+  metrics,
   canSend,
   asked,
   pending,
@@ -456,6 +467,7 @@ function Outcome({
   status: CampaignStatus;
   count: number;
   messages: MessageProgress | null;
+  metrics: ReactNode;
   canSend: boolean;
   asked: boolean;
   pending: boolean;
@@ -465,21 +477,28 @@ function Outcome({
   confirm: () => void;
 }) {
   return (
-    <section className={styles.card}>
-      <div className={styles.cardHead}>
-        <h2>Sending</h2>
-        <StatusPill status={status} />
+    <section className={`${styles.performanceSection} ${styles.full}`}>
+      <div className={styles.performanceHeader}>
+        <h2>Performance</h2>
+        <div className={`${styles.performanceMeta} ${styles.outcome} ${toneOf(status)}`}>
+          <span className={styles.performanceStatus}>
+            <Icon icon={status === "sent" ? Tick02Icon : status === "queued" || status === "sending" ? Clock01Icon : Cancel01Icon} size={16} />
+            {outcomeTitle(status)}
+          </span>
+          <span>{outcomeLine(status, campaign.sentAt)}</span>
+          <span className={styles.performanceRecipients}>{count.toLocaleString("en-US")} {people(count)}</span>
+        </div>
       </div>
 
-      <div className={styles.cardBody}>
-        <div className={`${styles.outcome} ${toneOf(status)}`}>
-          <b className={styles.headline}>{count}</b>
-          <p>{people(count)}</p>
-          <p>{outcomeLine(status, campaign.sentAt)}</p>
-        </div>
+      <div>
+        {metrics}
 
         {messages && messages.total > 0 ? (
-          <Progress messages={messages} />
+          status === "queued" || status === "sending" ? <Progress messages={messages} /> :
+            <details className={styles.deliveryDetails}>
+              <summary>Delivery details<span>{messages.gone.toLocaleString("en-US")} of {messages.total.toLocaleString("en-US")} processed</span></summary>
+              <Progress messages={messages} />
+            </details>
         ) : null}
 
         {status === "queued" && canSend ? (
@@ -528,24 +547,31 @@ function Progress({ messages }: { messages: MessageProgress }) {
   const counted = Object.entries(messages.byStatus).filter(
     ([, count]) => count > 0,
   );
+  const processed = Math.min(messages.total, Math.max(0, messages.gone));
 
   return (
-    <ul className={styles.progress}>
+    <div className={styles.deliveryProgress}>
       {/* Not one of the statuses, and the reason it is listed beside them: a
           message that bounced has left this system as surely as one that was
           delivered, and cancelling reaches neither. */}
-      <li>
-        <b>{messages.gone}</b>
-        <span>gone</span>
-      </li>
-
-      {counted.map(([state, count]) => (
-        <li key={state}>
-          <b>{count}</b>
-          <span>{state}</span>
-        </li>
-      ))}
-    </ul>
+      <div className={styles.progressCaption}>
+        <span>{messages.gone.toLocaleString("en-US")} of {messages.total.toLocaleString("en-US")} messages processed</span>
+        <span>{messages.pending.toLocaleString("en-US")} pending</span>
+      </div>
+      <div className={styles.progressTrack} role="progressbar" aria-label="Messages processed"
+        aria-valuemin={0} aria-valuemax={messages.total} aria-valuenow={processed}
+        aria-valuetext={`${messages.gone} of ${messages.total} messages processed`}>
+        <span style={{ width: `${processed / messages.total * 100}%` }} />
+      </div>
+      <ul className={styles.progress}>
+        {counted.map(([state, count]) => (
+          <li key={state}>
+            <span>{state}</span>
+            <b>{count.toLocaleString("en-US")}</b>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -579,24 +605,33 @@ function toneOf(status: CampaignStatus): string {
 
 function outcomeLine(status: CampaignStatus, sentAt: string | null): string {
   if (status === "sent") {
-    return sentAt === null ? "Sent." : `Sent ${when(sentAt)}.`;
+    return sentAt === null ? "Sending has finished." : when(sentAt);
   }
 
   if (status === "queued") {
-    return "Queued.";
+    return "Waiting for sending to begin.";
   }
 
   if (status === "sending") {
-    return "Sending now.";
+    return "Messages are being sent to your recipients.";
   }
 
   if (status === "cancelled") {
-    return "Cancelled.";
+    return "Any messages still in the queue will not be sent.";
   }
 
   if (status === "failed") {
-    return "Sending failed.";
+    return "Check the message statuses below for details.";
   }
 
   return "";
+}
+
+function outcomeTitle(status: CampaignStatus): string {
+  if (status === "sent") return "Campaign sent";
+  if (status === "queued") return "Campaign queued";
+  if (status === "sending") return "Sending in progress";
+  if (status === "cancelled") return "Campaign cancelled";
+  if (status === "failed") return "Sending failed";
+  return status;
 }

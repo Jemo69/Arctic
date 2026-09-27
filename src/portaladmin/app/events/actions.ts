@@ -3,7 +3,7 @@
 import type { AnnouncementContent } from "../../../../libs/ui/announcements";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eventsFetch } from "./api";
+import { apiFetch } from "@/lib/api";
 
 export type NewEventState = { error?: string };
 
@@ -17,16 +17,6 @@ export type NewEventState = { error?: string };
  */
 export type WriteResult = { ok: boolean; error?: string };
 
-/**
- * What a 404 from one of these endpoints means.
- *
- * The events endpoints were being built while this screen was, so for a while
- * either can answer 404. Told apart from every other failure on purpose: "not
- * there yet" is a different sentence from "it went wrong", and only one of
- * them is worth reporting to anybody.
- */
-const NOT_SHIPPED = "Not available yet. Nothing changed.";
-
 async function readFailure(response: Response): Promise<WriteResult> {
   if (response.status === 403) {
     return { ok: false, error: "You do not have permission to do that." };
@@ -37,7 +27,7 @@ async function readFailure(response: Response): Promise<WriteResult> {
   }
 
   if (response.status === 404) {
-    return { ok: false, error: NOT_SHIPPED };
+    return { ok: false, error: "This event could not be found. Refresh the page." };
   }
 
   const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -66,7 +56,7 @@ export async function createEvent(
   let response: Response;
 
   try {
-    response = await eventsFetch("/admin/events", {
+    response = await apiFetch("/admin/events", {
       method: "POST",
       body: JSON.stringify({ slug, name }),
       headers: { "content-type": "application/json" },
@@ -136,7 +126,7 @@ export async function saveEvent(
   let response: Response;
 
   try {
-    response = await eventsFetch(`/admin/events/${eventId}`, {
+    response = await apiFetch(`/admin/events/${eventId}`, {
       method: "PUT",
       body: JSON.stringify(edit),
       headers: { "content-type": "application/json" },

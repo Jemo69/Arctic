@@ -282,8 +282,7 @@
 }
 
 .testForm input:focus {
-  border-color: var(--accent);
-  outline: 3px solid var(--accent-soft);
+  outline: none;
 }
 
 .testForm input::placeholder {

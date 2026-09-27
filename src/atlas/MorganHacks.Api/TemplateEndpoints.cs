@@ -717,7 +717,7 @@ public static partial class TemplateEndpoints
     /// somebody should rewrite.
     /// </para>
     /// </remarks>
-    private static bool IsSenderName(string name) =>
+    internal static bool IsSenderName(string name) =>
         name.Length <= MaxSenderNameLength
         && name.All(c => c is >= ' ' and <= '~' && c is not ('"' or '<' or '>'));
 
@@ -727,7 +727,7 @@ public static partial class TemplateEndpoints
     /// </summary>
     private const int MaxSenderNameLength = 64;
 
-    private static bool IsAddress(string address)
+    internal static bool IsAddress(string address)
     {
         var at = address.LastIndexOf('@');
         return at > 0 && at < address.Length - 1
@@ -807,7 +807,8 @@ public static partial class TemplateEndpoints
         int Version,
         DateTimeOffset UpdatedAt,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? HasDraft = null,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviewHtml = null);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviewHtml = null,
+        bool ClickTracking = false);
 
     private static TemplateSummary Summary(TemplateVersion template, bool includePreview = false) => new(
         template.Key,
@@ -817,7 +818,8 @@ public static partial class TemplateEndpoints
         template.Format,
         template.Version,
         template.UpdatedAt,
-        PreviewHtml: includePreview ? template.Html : null);
+        PreviewHtml: includePreview ? template.Html : null,
+        ClickTracking: template.ClickTracking);
 
     /// <summary>
     /// One template, in the shape an editor opens.

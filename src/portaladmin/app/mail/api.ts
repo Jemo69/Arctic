@@ -1,7 +1,14 @@
-import { apiFetch, currentPerson, type FormsView } from "@/lib/api";
+import { apiFetch, type FormsView } from "@/lib/api";
 import type {
   Campaign,
+  CampaignEmailSettings,
+  CampaignSaveResult,
+  CampaignUpdate,
+  CampaignAnalytics,
+  CampaignRecipientPage,
   CampaignRow,
+  CampaignListFilters,
+  CampaignListPage,
   CampaignStatus,
   EventChoice,
   FormChoice,
@@ -9,6 +16,7 @@ import type {
   PlaceholderCoverage,
   Preview,
   Render,
+  RecipientRead,
   Segment,
 } from "@/components/mail/types";
 import type { TemplateRow } from "@/components/templates/types";
@@ -23,7 +31,7 @@ import { readTemplates } from "@/app/templates/api";
  */
 
 export type ListRead =
-  | { ok: true; items: CampaignRow[]; mocked: boolean }
+  | ({ ok: true } & CampaignListPage)
   | { ok: false; status: number; error: string };
 
 export type OneRead =
@@ -42,7 +50,8 @@ export type OneRead =
        * campaign reached nobody.
        */
       sample: string[] | null;
-      mocked: boolean;
+      recipients?: CampaignRecipientPage | null;
+      analytics?: CampaignAnalytics | null;
     }
   | { ok: false; status: number; error: string };
 
@@ -99,6 +108,11 @@ function whyWrite(status: number): string {
  * means by "sent" is a question this file answers once.
  */
 type Described = {
+  audience?: CampaignRow["audience"];
+  summary?: CampaignRow["summary"];
+  revision?: number;
+  updatedBy?: string | null;
+  trackingEnabled?: boolean;
   id: string;
   name: string;
   status: CampaignStatus;
@@ -123,6 +137,8 @@ type Described = {
  */
 function received(row: Described): Campaign {
   return {
+    revision: row.revision ?? 0,
+    updatedBy: row.updatedBy ?? null,
     id: row.id,
     name: row.name,
     status: row.status,
@@ -131,9 +147,12 @@ function received(row: Described): Campaign {
     sentAt: row.completedAt ?? row.queuedAt ?? null,
     templateKey: row.templateKey ?? null,
     templateKind: row.templateKind ?? null,
+    trackingEnabled: row.trackingEnabled,
     segment: row.segment ?? null,
     createdBy: row.createdBy ?? null,
     approvedBy: row.approvedBy ?? null,
+    audience: row.audience,
+    summary: row.summary,
   };
 }
 
@@ -148,16 +167,13 @@ async function said(response: Response, fallback: string): Promise<string> {
 }
 
 /** Every campaign, newest first as the API returns them. */
-export async function readCampaigns(): Promise<ListRead> {
+export async function readCampaigns(filters?: CampaignListFilters): Promise<ListRead> {
   let response: Response;
   try {
-    response = await apiFetch("/admin/campaigns");
+    const query = filters ? new URLSearchParams({ search: filters.search, status: filters.status, sort: filters.sort, page: String(filters.page) }) : null;
+    response = await apiFetch(`/admin/campaigns${query ? `?${query}` : ""}`);
   } catch {
     return { ok: false, status: 0, error: "The API could not be reached." };
-  }
-
-  if (response.status === 404 && EXAMPLES) {
-    return { ok: true, items: exampleList(), mocked: true };
   }
 
   if (!response.ok) {
@@ -167,8 +183,8 @@ export async function readCampaigns(): Promise<ListRead> {
   // The API calls it campaigns, not items. This screen called it items,
   // nothing typed the boundary between them, and the page threw on undefined
   // the first time it was opened against a real API.
-  const { campaigns } = (await response.json()) as { campaigns: Described[] };
-  return { ok: true, items: (campaigns ?? []).map(received), mocked: false };
+  const { campaigns, ...paging } = (await response.json()) as Omit<CampaignListPage, "items"> & { campaigns: Described[] };
+  return { ok: true, items: (campaigns ?? []).map(received), ...paging };
 }
 
 /** One campaign, with its template and its segment. */
@@ -178,20 +194,6 @@ export async function readCampaign(id: string): Promise<OneRead> {
     response = await apiFetch(`/admin/campaigns/${encodeURIComponent(id)}`);
   } catch {
     return { ok: false, status: 0, error: "The API could not be reached." };
-  }
-
-  if (response.status === 404 && EXAMPLES) {
-    const stored = exampleOne(id);
-    if (stored) {
-      const campaign = asSeenBy(stored, (await currentPerson())?.personId ?? null);
-      return {
-        ok: true,
-        campaign,
-        messages: exampleProgress(campaign),
-        sample: campaign.status === "draft" ? null : exampleAddresses(8),
-        mocked: true,
-      };
-    }
   }
 
   if (!response.ok) {
@@ -204,24 +206,65 @@ export async function readCampaign(id: string): Promise<OneRead> {
   // mail" once the segment has moved on.
   const body = (await response.json()) as {
     campaign: Described;
+    settings?: CampaignEmailSettings | null;
     messages?: MessageProgress | null;
     sample?: string[] | null;
+    recipients?: CampaignRecipientPage | null;
+    analytics?: CampaignAnalytics | null;
   };
 
   return {
     ok: true,
-    campaign: received(body.campaign),
+    campaign: { ...received(body.campaign), settings: body.settings },
     messages: body.messages ?? null,
     sample: body.sample ?? null,
-    mocked: false,
+    recipients: body.recipients ?? null,
+    analytics: body.analytics ?? null,
   };
+}
+
+export async function updateCampaign(id: string, draft: CampaignUpdate): Promise<CampaignSaveResult> {
+  try {
+    const response = await apiFetch(`/admin/campaigns/${encodeURIComponent(id)}`, {
+      method: "PUT", body: JSON.stringify(draft), headers: { "content-type": "application/json" },
+    });
+    if (!response.ok) return { ok: false, error: await said(response, "Campaign settings could not be saved.") };
+    const body = await response.json() as { campaign: Described; settings: CampaignEmailSettings };
+    return { ok: true, campaign: { ...received(body.campaign), settings: body.settings } };
+  } catch {
+    return { ok: false, error: "The API could not be reached. Your changes have not been saved." };
+  }
+}
+
+export async function readCampaignRecipients(id: string, page: number): Promise<RecipientRead> {
+  if (!Number.isSafeInteger(page) || page < 1) {
+    return { ok: false, error: "Choose a valid page." };
+  }
+
+  try {
+    const response = await apiFetch(`/admin/campaigns/${encodeURIComponent(id)}/recipients?page=${page}`);
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: response.status === 401
+          ? "Your session has ended. Sign in again."
+          : response.status === 403
+            ? "You do not have permission to view recipients."
+            : "Recipients could not be loaded. Try again.",
+      };
+    }
+    return { ok: true, recipients: await response.json() as CampaignRecipientPage };
+  } catch {
+    return { ok: false, error: "Recipients could not be loaded. Try again." };
+  }
 }
 
 /** Starts a campaign as a draft. Nothing is sent by creating one. */
 export async function createCampaign(body: {
   name: string;
   templateKey: string;
-  segment: Segment;
+  segment: Segment | null;
+  trackingEnabled?: boolean;
 }): Promise<Created> {
   let response: Response;
   try {
@@ -232,10 +275,6 @@ export async function createCampaign(body: {
     });
   } catch {
     return { ok: false, error: "The API could not be reached." };
-  }
-
-  if (response.status === 404 && EXAMPLES) {
-    return { ok: true, id: exampleCreate(body) };
   }
 
   if (!response.ok) {
@@ -266,13 +305,6 @@ export async function previewCampaign(id: string): Promise<PreviewRead> {
     );
   } catch {
     return { ok: false, error: "The API could not be reached." };
-  }
-
-  if (response.status === 404 && EXAMPLES) {
-    const preview = examplePreview(id);
-    if (preview) {
-      return { ok: true, preview };
-    }
   }
 
   if (!response.ok) {
@@ -370,8 +402,8 @@ function renders(value: unknown): Render[] | undefined {
 }
 
 /** Hands the campaign to the sender. There is no undo past this. */
-export async function sendCampaign(id: string): Promise<Changed> {
-  return change(id, "send");
+export async function sendCampaign(id: string, revision?: number): Promise<Changed> {
+  return change(id, "send", revision);
 }
 
 /** Stops a campaign that is queued. */
@@ -379,22 +411,17 @@ export async function cancelCampaign(id: string): Promise<Changed> {
   return change(id, "cancel");
 }
 
-async function change(id: string, verb: "send" | "cancel"): Promise<Changed> {
+async function change(id: string, verb: "send" | "cancel", revision?: number): Promise<Changed> {
   let response: Response;
   try {
     response = await apiFetch(
       `/admin/campaigns/${encodeURIComponent(id)}/${verb}`,
-      { method: "POST" },
+      { method: "POST", ...(revision === undefined ? {} : {
+        body: JSON.stringify({ revision }), headers: { "content-type": "application/json" },
+      }) },
     );
   } catch {
     return { ok: false, error: "The API could not be reached." };
-  }
-
-  if (response.status === 404 && EXAMPLES) {
-    const changed = exampleChange(id, verb, (await currentPerson())?.personId ?? null);
-    if (changed) {
-      return changed;
-    }
   }
 
   if (!response.ok) {
@@ -432,11 +459,19 @@ async function change(id: string, verb: "send" | "cancel"): Promise<Changed> {
 export async function readForms(): Promise<{
   forms: FormChoice[];
   events: EventChoice[];
+  error: string | null;
 }> {
   try {
     const response = await apiFetch("/admin/forms");
     if (!response.ok) {
-      return { forms: [], events: [] };
+      return {
+        forms: [], events: [],
+        error: response.status === 401
+          ? "Your session has ended. Sign in again."
+          : response.status === 403
+            ? "You do not have permission to load forms and events."
+            : "Forms and events could not be loaded. Refresh the page to try again.",
+      };
     }
 
     // The events ride along with the forms rather than being fetched
@@ -449,9 +484,10 @@ export async function readForms(): Promise<{
     return {
       forms: forms.map((form) => ({ id: form.id, name: form.name })),
       events: (events ?? []).map((event) => ({ id: event.id, name: event.name })),
+      error: null,
     };
   } catch {
-    return { forms: [], events: [] };
+    return { forms: [], events: [], error: "Forms and events could not be loaded. Refresh the page to try again." };
   }
 }
 
@@ -465,8 +501,7 @@ export async function readForms(): Promise<{
  * chosen means the refusal cannot happen.
  *
  * The list is the templates screen's fetch, not a second one. One reader of
- * the endpoint means one answer to what a template is, and one place the
- * scaffolding has to be deleted from.
+ * the endpoint means one answer to what a template is.
  *
  * The error comes back rather than an empty list, because "there are no
  * templates yet" and "you are not allowed to see them" put somebody on
@@ -476,7 +511,7 @@ export async function readBroadcastTemplates(): Promise<{
   templates: TemplateRow[];
   error: string | null;
 }> {
-  const read = await readTemplates();
+  const read = await readTemplates(false, true);
 
   if (!read.ok) {
     return { templates: [], error: read.error };
@@ -486,431 +521,4 @@ export async function readBroadcastTemplates(): Promise<{
     templates: read.items.filter((template) => template.kind === "broadcast"),
     error: null,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Example data, until the API is there
-// ---------------------------------------------------------------------------
-
-/*
- * Everything below this line is scaffolding and is meant to be deleted.
- *
- * The campaigns endpoints are being built in parallel with these screens.
- * Rather than ship pages nobody can look at until they land, a 404 from them —
- * and only a 404 — is answered with fabricated campaigns so the list, the
- * compose panel, the preview gate, the send confirmation, the cancel and the
- * empty state can all be reviewed.
- *
- * Two locks, both of which must be off for a single example to appear:
- * production is excluded outright, and outside production it still takes
- * MAIL_EXAMPLES=1 in the environment. A missing endpoint in production is a
- * fault and has to read as one — a screen that quietly invents four hundred
- * recipients there is worse than a screen that says it could not load.
- *
- * The addresses are example.edu and the campaign names say what they are, so
- * nothing here can be mistaken for a real send. When the endpoints land this
- * block goes and nothing above it changes.
- */
-
-/** Never in production, and off by default everywhere else. */
-const EXAMPLES =
-  process.env.NODE_ENV !== "production" && process.env.MAIL_EXAMPLES === "1";
-
-/** Fixed, so the same page renders the same way on the server and the client. */
-const EXAMPLE_NOW = Date.UTC(2026, 8, 1, 15, 20);
-
-/** Somebody else. Every example but one was drafted by this person. */
-const EXAMPLE_AUTHOR = "a41e94ab-0000-4000-8000-000000000001";
-
-/** The second name on an example that has gone out. */
-const EXAMPLE_APPROVER = "b38f29cd-0000-4000-8000-000000000002";
-
-/**
- * Stands in for whoever is reading, and is swapped for their real id on the
- * way out. A fixture cannot know the signed-in person at the time it is
- * written, and the two-person refusal is only visible when it does.
- */
-const EXAMPLE_SELF = "example-self";
-
-/**
- * The API's sentence when the author tries to send their own campaign.
- *
- * Copied from CampaignEndpoints.Send rather than written here. The screen
- * shows the API's wording in every other refusal, and an example that read
- * differently from the real thing would be teaching the wrong sentence to the
- * people who see it first.
- */
-const EXAMPLE_SELF_SEND_REFUSAL =
-  "A broadcast has to be sent by somebody other than the person who wrote it. " +
-  "Ask another organizer with broadcast permission to send this one.";
-
-/** Fills the reader's own id in where a fixture could only leave a placeholder. */
-function asSeenBy(campaign: Campaign, me: string | null): Campaign {
-  return campaign.createdBy === EXAMPLE_SELF
-    ? { ...campaign, createdBy: me ?? EXAMPLE_SELF }
-    : campaign;
-}
-
-function exampleStamp(minutesAgo: number): string {
-  return new Date(EXAMPLE_NOW - minutesAgo * 60_000).toISOString();
-}
-
-/**
- * The example campaigns, kept in the module so a send made against them is
- * still sent when the page re-renders. Lost whenever the dev server restarts,
- * which is the right amount of durability for a fixture.
- */
-const examples = new Map<string, Campaign>();
-
-function seed(): void {
-  if (examples.size > 0) {
-    return;
-  }
-
-  for (const campaign of [
-    {
-      id: "example-draft",
-      name: "Example campaign (draft)",
-      status: "draft" as const,
-      recipientCount: 0,
-      createdAt: exampleStamp(90),
-      sentAt: null,
-      templateKey: "example_template",
-      templateKind: "broadcast",
-      createdBy: EXAMPLE_AUTHOR,
-      approvedBy: null,
-      segment: {
-        type: "applicationStatus",
-        eventId: "00000000-0000-0000-0000-000000000000",
-        statuses: ["accepted"],
-      } as Segment,
-    },
-    {
-      // The state the brief calls the one that will confuse people first: a
-      // draft whose author is whoever is reading it. Every other example can
-      // be sent; this one is refused, in the API's own words, and it exists so
-      // that refusal can be looked at before somebody meets it for real.
-      id: "example-yours",
-      name: "Example campaign (drafted by you)",
-      status: "draft" as const,
-      recipientCount: 0,
-      createdAt: exampleStamp(20),
-      sentAt: null,
-      templateKey: "example_template",
-      templateKind: "broadcast",
-      createdBy: EXAMPLE_SELF,
-      approvedBy: null,
-      segment: {
-        type: "applicationStatus",
-        eventId: "00000000-0000-0000-0000-000000000000",
-        statuses: ["waitlisted"],
-      } as Segment,
-    },
-    {
-      id: "example-queued",
-      name: "Example campaign (queued)",
-      status: "queued" as const,
-      recipientCount: 342,
-      createdAt: exampleStamp(240),
-      sentAt: exampleStamp(200),
-      templateKey: "example_template",
-      templateKind: "broadcast",
-      createdBy: EXAMPLE_AUTHOR,
-      approvedBy: EXAMPLE_APPROVER,
-      segment: {
-        type: "applicationStatus",
-        eventId: "00000000-0000-0000-0000-000000000000",
-        statuses: ["submitted"],
-      } as Segment,
-    },
-    {
-      id: "example-sent",
-      name: "Example campaign (sent)",
-      status: "sent" as const,
-      recipientCount: 118,
-      createdAt: exampleStamp(4_320),
-      sentAt: exampleStamp(4_280),
-      templateKey: "example_template",
-      templateKind: "broadcast",
-      createdBy: EXAMPLE_AUTHOR,
-      approvedBy: EXAMPLE_APPROVER,
-      segment: {
-        type: "explicitList",
-        emails: exampleAddresses(118),
-      } as Segment,
-    },
-  ]) {
-    examples.set(campaign.id, campaign);
-  }
-}
-
-/**
- * How far through the queue an example campaign is.
- *
- * Derived from its status rather than stored, so the numbers agree with the
- * pill beside them. A draft has written no messages at all, which is why it
- * gets null instead of a row of noughts.
- */
-function exampleProgress(campaign: Campaign): MessageProgress | null {
-  if (campaign.status === "draft") {
-    return null;
-  }
-
-  const total = campaign.recipientCount;
-
-  if (campaign.status === "queued" || campaign.status === "sending") {
-    const gone = Math.floor(total * 0.4);
-    return {
-      total,
-      pending: total - gone,
-      gone,
-      byStatus: { pending: total - gone, sent: gone },
-    };
-  }
-
-  if (campaign.status === "sent") {
-    return {
-      total,
-      pending: 0,
-      gone: total,
-      byStatus: { delivered: total - 2, bounced: 2 },
-    };
-  }
-
-  return { total, pending: 0, gone: 0, byStatus: { suppressed: total } };
-}
-
-function exampleAddresses(count: number): string[] {
-  return Array.from({ length: count }, (_, index) => `person${index + 1}@example.edu`);
-}
-
-function exampleList(): CampaignRow[] {
-  seed();
-
-  return [...examples.values()]
-    .map(({ id, name, status, recipientCount, createdAt, sentAt }) => ({
-      id,
-      name,
-      status,
-      recipientCount,
-      createdAt,
-      sentAt,
-    }))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-function exampleOne(id: string): Campaign | null {
-  seed();
-  return examples.get(id) ?? null;
-}
-
-function exampleCreate(body: {
-  name: string;
-  templateKey: string;
-  segment: Segment;
-}): string {
-  seed();
-
-  const id = `example-${examples.size + 1}`;
-  examples.set(id, {
-    id,
-    name: body.name,
-    status: "draft",
-    recipientCount: 0,
-    createdAt: exampleStamp(0),
-    sentAt: null,
-    templateKey: body.templateKey,
-    segment: body.segment,
-  });
-
-  return id;
-}
-
-/**
- * A count that follows from the segment rather than a constant, so the number
- * on the confirmation is one that changes when the segment does.
- */
-function examplePreview(id: string): Preview | null {
-  const campaign = exampleOne(id);
-  if (!campaign?.segment) {
-    return null;
-  }
-
-  const segment = campaign.segment;
-  const segmentSize =
-    segment.type === "explicitList"
-      ? segment.emails.length
-      : segment.type === "formRespondents"
-        ? 47
-        : 20 + segment.statuses.join().length * 17;
-
-  /*
-   * A few of them held back, because a preview where matched and sendable are
-   * always the same number never shows the sentence the whole panel is for —
-   * "412 matched, 400 will be sent, 12 suppressed" — and that is the one a
-   * reviewer needs to look at.
-   *
-   * The reasons are the four the suppressions table's check constraint allows,
-   * written as it stores them.
-   */
-  const byReason: Record<string, number> = {};
-  const suppressedCount = Math.min(segmentSize, 12);
-
-  if (suppressedCount > 0) {
-    byReason.unsubscribed = Math.ceil(suppressedCount / 2);
-    byReason.hard_bounce = Math.floor(suppressedCount / 3);
-    byReason.complaint =
-      suppressedCount - byReason.unsubscribed - byReason.hard_bounce;
-  }
-
-  const recipientCount = segmentSize - suppressedCount;
-
-  return {
-    recipientCount,
-    segmentSize,
-    suppressedCount,
-    suppressedByReason: byReason,
-    sample: exampleAddresses(Math.min(recipientCount, 8)),
-    problems: [],
-    placeholderCoverage: exampleCoverage(recipientCount),
-    renders: exampleRenders(recipientCount),
-  };
-}
-
-/**
- * Two placeholders, one of them with a gap.
- *
- * A fixture where everything is filled never shows the panel doing its job,
- * and the job is the twelve people who would open an email addressed to
- * `{{firstName}}`. So one placeholder the segment covers and one it does not,
- * which is also the shape of the real problem: the field exists on some
- * records and not others.
- */
-function exampleCoverage(recipientCount: number): PlaceholderCoverage[] {
-  const missing = Math.min(recipientCount, 12);
-
-  return [
-    {
-      placeholder: "firstName",
-      missing,
-      total: recipientCount,
-      examples: exampleAddresses(Math.min(missing, 3)),
-    },
-    {
-      placeholder: "eventName",
-      missing: 0,
-      total: recipientCount,
-      examples: [],
-    },
-  ];
-}
-
-/**
- * Four messages, the last of which is one of the twelve.
- *
- * No wording. The bodies are the substituted values and nothing else — the
- * real ones come from the template, which belongs to whoever writes the
- * emails, and a fixture that invented copy would be putting words nobody
- * approved on a screen whose whole purpose is checking what goes out.
- */
-function exampleRenders(recipientCount: number): Render[] {
-  return exampleAddresses(Math.min(recipientCount, 4)).map(
-    (email, index, all) => {
-      const unfilled = index === all.length - 1 ? ["firstName"] : [];
-      const name =
-        unfilled.length > 0 ? "{{firstName}}" : `Example Person ${index + 1}`;
-
-      return {
-        email,
-        subject: `Example Event · ${name}`,
-        html: exampleBody(name, email, 4 + index * 7),
-        text: `Example Event\n\n${name}`,
-        unfilled,
-      };
-    },
-  );
-}
-
-/**
- * One example message, shaped like the thing it stands in for.
- *
- * The bodies here were a heading and a line, which is neither what anybody
- * sends nor what the preview has to survive. A real broadcast is a fixed
- * 600px table with a band at the top and a footer under it, and it is
- * routinely taller than the panel showing it — so a fixture shorter than the
- * frame can never show the frame failing, and that is exactly how a preview
- * that could not hold a real message came to be reviewed and shipped.
- *
- * Still no wording: every string is a value this fixture already substituted
- * — the event, the person, the address — arranged as markup. The words in a
- * real message belong to whoever writes the emails.
- *
- * No colour either. Every border here takes `currentColor` rather than naming
- * one, because a hex written in this repository is a hex somebody has to
- * check against the palette, and the palette has nothing to say about
- * somebody else's email.
- *
- * The row count grows with the index, so stepping through the sample steps
- * between genuinely different heights. That is the other thing this panel has
- * to do without moving.
- */
-function exampleBody(name: string, email: string, rows: number): string {
-  const row = (n: number) =>
-    `<tr><td style="padding:8px 12px;border-bottom:1px solid">Example Person ${n}</td>` +
-    `<td style="padding:8px 12px;border-bottom:1px solid">person${n}@example.edu</td></tr>`;
-
-  return [
-    '<table role="presentation" width="600" cellpadding="0" cellspacing="0"',
-    ' style="width:600px;border-collapse:collapse;font-family:Arial,sans-serif">',
-    '<tr><td style="padding:24px;border-bottom:3px solid">',
-    '<h1 style="margin:0;font-size:24px">Example Event</h1>',
-    "</td></tr>",
-    '<tr><td style="padding:24px">',
-    `<p style="margin:0 0 16px">${name}</p>`,
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"',
-    ' style="border-collapse:collapse;font-size:14px">',
-    Array.from({ length: rows }, (_, index) => row(index + 1)).join(""),
-    "</table>",
-    "</td></tr>",
-    '<tr><td style="padding:24px;border-top:1px solid;font-size:12px">',
-    `<p style="margin:0">Example Event</p>`,
-    `<p style="margin:4px 0 0">${email}</p>`,
-    "</td></tr>",
-    "</table>",
-  ].join("");
-}
-
-function exampleChange(
-  id: string,
-  verb: "send" | "cancel",
-  me: string | null,
-): Changed | null {
-  const campaign = exampleOne(id);
-  if (!campaign) {
-    return null;
-  }
-
-  if (verb === "send") {
-    // The refusal the real API gives, given here for the same reason: the
-    // person pressing this wrote the campaign, and the fixture would be
-    // useless if it were the one example where that was allowed.
-    if (campaign.createdBy === EXAMPLE_SELF && me !== null) {
-      return { ok: false, error: EXAMPLE_SELF_SEND_REFUSAL };
-    }
-
-    const preview = examplePreview(id);
-    const recipientCount = preview?.recipientCount ?? 0;
-
-    examples.set(id, {
-      ...campaign,
-      status: "queued",
-      recipientCount,
-      sentAt: exampleStamp(0),
-    });
-
-    return { ok: true, status: "queued", recipientCount };
-  }
-
-  examples.set(id, { ...campaign, status: "cancelled", sentAt: null });
-  return { ok: true, status: "cancelled", recipientCount: campaign.recipientCount };
 }

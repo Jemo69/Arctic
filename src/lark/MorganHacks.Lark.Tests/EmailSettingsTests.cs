@@ -42,6 +42,7 @@ public class EmailSettingsTests(NotifyDatabase db) : IClassFixture<NotifyDatabas
         var first = await store.PrepareAsync(message with { ClickTracking = true }, "https://api.example.invalid/api");
         var retry = await store.PrepareAsync(message with { ClickTracking = true }, "https://api.example.invalid/api");
         Assert.Equal(first, retry);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(first.BodyHtml, "/email/open/"));
         Assert.Contains("https://api.example.invalid/api/email/click/", first.BodyHtml);
         Assert.Contains("mailto:hello@example.invalid", first.BodyHtml);
         Assert.Contains("href='#local'", first.BodyHtml);
@@ -57,6 +58,25 @@ public class EmailSettingsTests(NotifyDatabase db) : IClassFixture<NotifyDatabas
         Assert.Equal(0, reader.GetInt64(2));
         Assert.Contains(token.ToString("N"), first.BodyText);
         Assert.False(await reader.ReadAsync());
+    }
+
+    [Fact]
+    public async Task Open_tracking_works_without_links_and_places_the_pixel_inside_the_body()
+    {
+        var campaign = await db.AddCampaignAsync();
+        var id = await db.QueueAsync(campaign, $"open-{Guid.NewGuid():N}@example.invalid");
+        var message = new ClaimedMessage(id, campaign, "test@example.invalid", 10, 0,
+            "Subject", "<html><body><p>Hello</p></body></html>", "Hello", "mail@example.invalid", null, null);
+        var store = new LinkTrackingStore(db.DataSource);
+        Assert.Equal(message, await store.PrepareAsync(message, ""));
+        var tracked = await store.PrepareAsync(message with { ClickTracking = true }, "https://api.example.invalid/api");
+        Assert.Contains("/email/open/", tracked.BodyHtml);
+        Assert.Contains(" /></body></html>", tracked.BodyHtml);
+        Assert.Equal("Hello", tracked.BodyText);
+        Assert.Equal(tracked, await store.PrepareAsync(message with { ClickTracking = true }, "https://api.example.invalid/api"));
+        await using var command = db.DataSource.CreateCommand("SELECT count(*) FROM notify.message_tracking WHERE message_id = @id");
+        command.Parameters.AddWithValue("id", id);
+        Assert.Equal(1L, await command.ExecuteScalarAsync());
     }
 
     [Theory]

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import styles from "../people.module.css";
+import { Copy01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/ui/icon";
+import styles from "./person-detail.module.css";
 
 /**
  * The sentence to send somebody, and one press to have it.
@@ -64,14 +66,14 @@ export function Invite({ email }: { email: string }) {
   }
 
   return (
-    <section className="panel">
-      <h2>Tell them</h2>
+    <section className={styles.panel}>
+      <header className={styles.sectionHead}><div><h2>Share sign-in instructions</h2><p>Copy a message to help this organizer get started.</p></div></header>
       {/* Shown as well as copied, so what landed on the clipboard can be read
           before it is pasted into a channel. */}
       <p className={styles.invite}>{origin === "" ? "…" : message}</p>
       <div className={styles.inviteActions}>
-        <button type="button" onClick={copy} disabled={origin === ""}>
-          Copy
+        <button type="button" className={styles.secondaryButton} onClick={copy} disabled={origin === ""}>
+          <Icon icon={Copy01Icon} size={16} />Copy instructions
         </button>
         {/* The button's own label is left alone — a control that renames
             itself under a screen reader's cursor reads as a different

@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ChartSkeleton } from "@/components/ui/page-skeleton";
 import { NavigationLink as Link } from "@/components/ui/navigation-link";
 import { dateLabel, numbers, type ActivityDay } from "./home-analytics";
 import { CustomDateRange } from "./home-date-range";
@@ -50,10 +52,10 @@ export function ResponseActivity({ activity, eventId, loading }: {
       </div>
     </div>
     <div className={styles.activitySummary}>
-      <strong>{loading ? "—" : numbers.format(submitted)}</strong>
+      <strong>{loading ? <Skeleton width={60} height={32} /> : numbers.format(submitted)}</strong>
       <span>{range === "custom" ? "responses in this period" : `responses in the last ${range} days`}</span>
     </div>
-    {invalid ? <div className={styles.chartMessage} role="status">Choose dates between {dateLabel(first)} and {dateLabel(last)}.</div>
+    {loading ? <ChartSkeleton /> : invalid ? <div className={styles.chartMessage} role="status">Choose dates between {dateLabel(first)} and {dateLabel(last)}.</div>
       : <div className={styles.chartWrap}>
         <div className={styles.axis} aria-hidden="true">
           {[2, 1, 0].map((tick) => <span key={tick}>{numbers.format(step * tick)}</span>)}
@@ -96,7 +98,7 @@ export function ResponseActivity({ activity, eventId, loading }: {
         </div>
       </div>}
     <div className={styles.activityFooter}>
-      <p>{loading ? "Loading activity…" : submitted === 0 ? "No responses during this period"
+      <p>{loading ? <Skeleton width={190} height={11} /> : submitted === 0 ? "No responses during this period"
         : `${numbers.format(started)} started · Peak of ${numbers.format(peak)} responses in a day`}</p>
       <Link href={eventId ? `/forms?event=${encodeURIComponent(eventId)}` : "/forms"}>View forms<Icon icon={ArrowRight01Icon} size={15} /></Link>
     </div>

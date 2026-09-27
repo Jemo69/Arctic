@@ -40,7 +40,7 @@ export default async function Templates() {
     <Shell personId={person.personId} templateCount={templates.items.length}>
       <TemplatesTable key={person.personId} templates={templates.items} personId={person.personId}
         initialHiddenKeys={templates.hiddenKeys}
-        canManage={canManage} canDelete={canDelete && !templates.mocked} mocked={templates.mocked} />
+        canManage={canManage} canDelete={canDelete} />
     </Shell>
   );
 }

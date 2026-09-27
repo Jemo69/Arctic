@@ -1,7 +1,7 @@
 "use client";
 
 import { NavigationLink as Link } from "@/components/ui/navigation-link";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft01Icon, ArrowRight01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,7 +20,7 @@ const pageSize = 10;
 const numbers = new Intl.NumberFormat("en-US");
 
 /** The small account directory is filtered locally, including team slugs. */
-export function PeopleTable({ people }: { people: Listed[] }) {
+export function PeopleTable({ people, children }: { people: Listed[]; children?: ReactNode }) {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("all");
   const [page, setPage] = useState(0);
@@ -49,7 +49,7 @@ export function PeopleTable({ people }: { people: Listed[] }) {
     tableScroll.current?.scrollTo({ top: 0 });
   }
 
-  return (
+  return <>
     <section className={styles.section} aria-labelledby="people-title">
       <div className={styles.tabs} role="group" aria-label="Filter people by type">
         {kinds.map((item) => (
@@ -159,5 +159,6 @@ export function PeopleTable({ people }: { people: Listed[] }) {
         ) : null}
       </div>}
     </section>
-  );
+    {kind === "organizer" ? children : null}
+  </>;
 }

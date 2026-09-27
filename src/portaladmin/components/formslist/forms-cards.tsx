@@ -27,7 +27,7 @@ export function FormsCards({ forms, now, canManage }: { forms: FormRow[]; now: n
               {form.kind === "application" ? "Application" : "Survey"}
               {questions !== null ? <><span className={styles.metaDot}>·</span>{questions} {questions === 1 ? "question" : "questions"}</> : null}
             </span>
-            <FormStatus form={form} now={now} showVersion={false} />
+            <FormStatus form={form} now={now} />
           </div>
         </div>
       </li>;

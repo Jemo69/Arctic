@@ -63,13 +63,6 @@ export default async function TemplatePage({
 
   return (
     <Shell personId={person.personId}>
-      {/* Scaffolding, and says so. Goes with the fixtures in api.ts the moment
-          the endpoints land. */}
-      {read.mocked ? (
-        <p className="error">
-          Showing example data. The templates API is not available yet.
-        </p>
-      ) : null}
 
       <Editor
         key={`${person.personId}:${template.key}`}
