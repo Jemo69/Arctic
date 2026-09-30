@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MorganHacks.Applications.Segments;
+using MorganHacks.Applications.Services;
 using MorganHacks.Identity.Domain;
 using MorganHacks.Identity.Services;
 using MorganHacks.Lark.Data.Data;
@@ -500,6 +501,7 @@ public static class CampaignEndpoints
         TemplateStore templates,
         ISegmentResolver resolver,
         IConfiguration config,
+        IEventStore events,
         CancellationToken ct)
     {
         var campaign = await campaigns.FindAsync(id, ct);
@@ -543,12 +545,14 @@ public static class CampaignEndpoints
             problems.Add(problem);
         }
 
+        var season = await SeasonFor(segment!, events, ct);
+
         // Against whatever the key means now, which is what the gap warning
         // has always been measured against. When that is not the row this
         // campaign holds, MissingTemplate above is already saying the campaign
         // has to be drafted again — and showing the current wording is still
         // the most useful thing on the screen while somebody does.
-        var coverage = Covered(template, sendable, config);
+        var coverage = Covered(template, sendable, config, season);
 
         if (Missing(coverage) is { } gap)
         {
@@ -585,7 +589,7 @@ public static class CampaignEndpoints
 
             // A few of them, actually rendered. Of the sendable list for the
             // same reason the sample is.
-            renders = Rendered(template, sendable, config),
+            renders = Rendered(template, sendable, config, season),
         });
     }
 
@@ -668,6 +672,7 @@ public static class CampaignEndpoints
         TemplateStore templates,
         ISegmentResolver resolver,
         IConfiguration config,
+        IEventStore events,
         ILogger<Campaign> log,
         CancellationToken ct)
     {
@@ -774,14 +779,16 @@ public static class CampaignEndpoints
 
         var sendable = resolved.Members.Where(m => !suppressed.ContainsKey(m.Email)).ToList();
 
-        if (Missing(Covered(template, sendable, config)) is { } gap)
+        var season = await SeasonFor(segment!, events, ct);
+
+        if (Missing(Covered(template, sendable, config, season)) is { } gap)
         {
             return Results.BadRequest(new { error = gap });
         }
 
         var recipients = resolved.Members.Select(member =>
         {
-            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config));
+            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season));
             return new BroadcastRecipient(
                 member.PersonId, member.Email,
                 rendered.Subject, rendered.BodyHtml, rendered.BodyText,
@@ -963,10 +970,38 @@ public static class CampaignEndpoints
     /// report a number.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Which event's dates this campaign's <c>{{event.*}}</c> placeholders mean.
+    /// </summary>
+    /// <remarks>
+    /// The segment's own event where it names one, and only the newest
+    /// otherwise. Reaching for the newest unconditionally is the obvious
+    /// version and is wrong in the one case it matters: a campaign aimed at
+    /// last season's accepted applicants would tell them this season's
+    /// deadline, and it would read perfectly.
+    /// <para>
+    /// A form's respondents and a typed list of addresses name no event, so
+    /// they get the current one. For a form that is nearly always right — a
+    /// form belongs to a season — and resolving it properly means a second
+    /// lookup through the form, which is worth doing when something asks for
+    /// it rather than now.
+    /// </para>
+    /// <para>
+    /// Null when there is no event at all, which a fresh database has. Every
+    /// event placeholder then stands and the coverage check refuses the send.
+    /// </para>
+    /// </remarks>
+    private static async Task<EventDetail?> SeasonFor(
+        Segment segment, IEventStore events, CancellationToken ct) =>
+        segment is Segment.InStatus inStatus
+            ? await events.ByIdAsync(inStatus.EventId, ct)
+            : (await events.ListDetailedAsync(ct)).FirstOrDefault();
+
     private static Coverage Covered(
         EmailTemplate? template,
         IReadOnlyList<SegmentMember> members,
-        IConfiguration config)
+        IConfiguration config,
+        EventDetail? season)
     {
         if (template is null)
         {
@@ -981,7 +1016,7 @@ public static class CampaignEndpoints
 
         foreach (var member in members)
         {
-            var unfilled = MergeFields.Unfilled(wanted, member, config);
+            var unfilled = MergeFields.Unfilled(wanted, member, config, season);
             if (unfilled.Count == 0)
             {
                 continue;
@@ -1060,7 +1095,8 @@ public static class CampaignEndpoints
     private static IReadOnlyList<object> Rendered(
         EmailTemplate? template,
         IReadOnlyList<SegmentMember> members,
-        IConfiguration config)
+        IConfiguration config,
+        EventDetail? season)
     {
         if (template is null || members.Count == 0)
         {
@@ -1071,7 +1107,7 @@ public static class CampaignEndpoints
         var chosen = new List<SegmentMember>();
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (members.FirstOrDefault(m => MergeFields.Unfilled(wanted, m, config).Count > 0) is { } gapped)
+        if (members.FirstOrDefault(m => MergeFields.Unfilled(wanted, m, config, season).Count > 0) is { } gapped)
         {
             chosen.Add(gapped);
             taken.Add(gapped.Email);
@@ -1092,7 +1128,7 @@ public static class CampaignEndpoints
 
         return chosen.Select(member =>
         {
-            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config));
+            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season));
 
             return (object)new
             {
@@ -1104,7 +1140,7 @@ public static class CampaignEndpoints
                 // Named on the render as well as counted in the coverage, so a
                 // screen showing one message can mark the hole in it without
                 // cross-referencing a list beside it.
-                unfilled = MergeFields.Unfilled(wanted, member, config),
+                unfilled = MergeFields.Unfilled(wanted, member, config, season),
             };
         }).ToList();
     }
