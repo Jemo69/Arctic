@@ -96,7 +96,20 @@ export type Rendered = {
  * `description` is what to tell somebody about the value — null where the API
  * offers no sentence for it, which is not the same as an empty one.
  */
-export type Placeholder = { name: string; description: string | null };
+export type Placeholder = {
+  name: string;
+  description: string | null;
+
+  /**
+   * The heading this is listed under.
+   *
+   * Null where the API offers none, which is how an older API reads to a newer
+   * console — the menu then shows one ungrouped list rather than a heading
+   * saying nothing. Never invented here: a guess at the grouping is worse than
+   * no grouping, because a heading is read as though somebody meant it.
+   */
+  group: string | null;
+};
 
 /** Everything a create or a save sends. */
 export type TemplateDraft = {

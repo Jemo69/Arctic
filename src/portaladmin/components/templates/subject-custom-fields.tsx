@@ -2,7 +2,7 @@
 
 import { ErrorToast } from "@/components/ui/error-toast";
 
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useId, useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
 import type { Placeholder } from "./types";
@@ -76,8 +76,8 @@ export function SubjectCustomFields({ available, label, onOpen, onSelect, error 
   }, [open]);
 
   useLayoutEffect(() => {
-    if (open) list.current?.children[active]?.scrollIntoView({ block: "nearest" });
-  }, [active, open]);
+    if (open) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [active, open, listId]);
 
   function choose(item: Placeholder) {
     if (onSelect(`{{${item.name}}}`)) popover.current?.hidePopover();
@@ -168,20 +168,26 @@ export function SubjectCustomFields({ available, label, onOpen, onSelect, error 
         </div>
         <div ref={list} id={listId} role="listbox" aria-label="Available custom fields" className={styles.fieldsList}>
           {matches.map((item, index) => (
-            <div
-              key={item.name}
-              id={`${listId}-${index}`}
-              role="option"
-              aria-selected={index === active}
-              title={item.description ?? undefined}
-              className={styles.fieldOption}
-              onMouseDown={(event) => event.preventDefault()}
-              onMouseMove={() => setActive(index)}
-              onClick={() => choose(item)}
-            >
-              <span className={styles.fieldName}>{fieldLabel(item.name)}</span>
-              <span className={styles.fieldToken}>{`{{${item.name}}}`}</span>
-            </div>
+            <Fragment key={item.name}>
+              {item.group && item.group !== matches[index - 1]?.group ? (
+                <div className={styles.fieldsGroup} role="presentation">
+                  {item.group}
+                </div>
+              ) : null}
+              <div
+                id={`${listId}-${index}`}
+                role="option"
+                aria-selected={index === active}
+                title={item.description ?? undefined}
+                className={styles.fieldOption}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseMove={() => setActive(index)}
+                onClick={() => choose(item)}
+              >
+                <span className={styles.fieldName}>{fieldLabel(item.name)}</span>
+                <span className={styles.fieldToken}>{`{{${item.name}}}`}</span>
+              </div>
+            </Fragment>
           ))}
         </div>
         {matches.length === 0 ? <p className={styles.fieldsEmpty} role="status">No fields found.</p> : null}

@@ -511,8 +511,7 @@ public static class PeopleEndpoints
     /// so a developer who sends one of these locally gets a link that works.
     /// </para>
     /// </remarks>
-    private static string ConsoleUrl(IConfiguration config) =>
-        (config["ConsoleBaseUrl"] ?? "http://localhost:3001").TrimEnd('/');
+    private static string ConsoleUrl(IConfiguration config) => Origins.Console(config);
 
     /// <summary>
     /// Why the address could not be added, said so the admin knows what to do.

@@ -51,8 +51,9 @@ public static class AuthEndpoints
     /// and every emailed link pointed at a machine nobody was running.
     /// </para>
     /// </remarks>
-    private static string PublicBaseUrl(IConfiguration config) =>
-        (config["PublicBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+    /// <remarks>Reads through <see cref="Origins"/>, which is where all three
+    /// front-end origins now live so they cannot drift apart.</remarks>
+    private static string PublicBaseUrl(IConfiguration config) => Origins.Portal(config);
 
     /// <summary>
     /// Where the public forms site is, which is not where the portal is.
@@ -69,8 +70,7 @@ public static class AuthEndpoints
     /// portalforms on.
     /// </para>
     /// </remarks>
-    public static string FormsBaseUrl(IConfiguration config) =>
-        (config["FormsBaseUrl"] ?? "http://localhost:3002").TrimEnd('/');
+    public static string FormsBaseUrl(IConfiguration config) => Origins.Forms(config);
 
     /// <summary>
     /// The path a form's sign-in link points at, on the forms site's origin.

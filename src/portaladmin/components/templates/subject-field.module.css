@@ -175,6 +175,23 @@
   white-space: nowrap;
 }
 
+/* The heading above each run of fields from the same group.
+   Not an option and never selectable: it is presentational, and the listbox
+   below it owns the keyboard. */
+.fieldsGroup {
+  padding: 10px 10px 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.fieldsGroup:first-child {
+  padding-top: 4px;
+}
+
 .fieldsEmpty {
   margin: 0;
   padding: 22px 12px;
