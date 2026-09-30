@@ -11,6 +11,8 @@ One page each, each ending with an escalation name.
 - [Getting at the database](database-access.md) — and why there is no jump box
 - [Nobody is receiving magic links](nobody-is-receiving-magic-links.md) — the
   failure where everything looks healthy
+- [The first production deploy](first-production-deploy.md) — what is missing
+  today, and why the first run is meant to fail
 
 ## Still to write
 
