@@ -26,11 +26,20 @@ RUN dotnet publish src/lark/MorganHacks.Lark/MorganHacks.Lark.csproj \
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-# Npgsql probes for Kerberos support on every connection. Without this library
-# it still connects, but prints "Cannot load library libgssapi_krb5.so.2" to
-# stderr at every startup — a permanent error-shaped line in the logs for a
-# feature we do not use, which is how people learn to ignore real ones.
+# The upgrade is the security one, and the reasoning is written out in full in
+# src/atlas/Dockerfile: the base image and the distribution's fixes move on
+# different schedules, and between them the image carries packages Ubuntu has
+# already patched. Kept identical across the three services on purpose — a
+# service scanned to a different standard than its neighbours is one nobody
+# can reason about.
+#
+# libgssapi-krb5-2 is the functional one. Npgsql probes for Kerberos support on
+# every connection. Without this library it still connects, but prints "Cannot
+# load library libgssapi_krb5.so.2" to stderr at every startup — a permanent
+# error-shaped line in the logs for a feature we do not use, which is how
+# people learn to ignore real ones.
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
  && rm -rf /var/lib/apt/lists/*
 
