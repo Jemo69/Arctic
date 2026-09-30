@@ -21,6 +21,16 @@ RUN dotnet publish src/harbor/MorganHacks.Harbor/MorganHacks.Harbor.csproj \
     -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+
+# Harbor installs nothing and still needs this. The base image and the
+# distribution's fixes move on different schedules, so between them it carries
+# packages Ubuntu has already patched — and harbor is the one service with a
+# public address, which makes it the last place to run a known-vulnerable
+# OpenSSL. The reasoning is written out in full in src/atlas/Dockerfile.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=build /app .
 USER $APP_UID
