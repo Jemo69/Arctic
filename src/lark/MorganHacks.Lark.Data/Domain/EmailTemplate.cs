@@ -63,7 +63,27 @@ public sealed record RenderedEmail(string Subject, string BodyHtml, string BodyT
 /// </remarks>
 public static partial class TemplateRenderer
 {
-    [GeneratedRegex(@"\{\{\s*(\w+)\s*\}\}")]
+    /// <summary>
+    /// What counts as a placeholder.
+    /// </summary>
+    /// <remarks>
+    /// The dot is in the character set because names are namespaced —
+    /// <c>{{event.name}}</c>, <c>{{form.link}}</c> — and because the editor has
+    /// always accepted one. It did not, here, and the two disagreeing was worse
+    /// than either rule on its own: a dotted name was a placeholder to the
+    /// editor's menu and not one to this regex, so it was invisible to
+    /// <see cref="PlaceholdersIn"/>, therefore invisible to the campaign's
+    /// unfillable and coverage checks, and therefore shipped as literal braces
+    /// with every check green.
+    /// <para>
+    /// This must stay at least as permissive as the editor's
+    /// <c>placeholders.ts</c> and <c>types.ts</c>. Stricter here recreates the
+    /// same hole facing the other way. It is deliberately loose enough to match
+    /// nonsense like <c>{{..}}</c>: a typo that is caught and refused is better
+    /// than one that is not seen at all.
+    /// </para>
+    /// </remarks>
+    [GeneratedRegex(@"\{\{\s*([\w.]+)\s*\}\}")]
     private static partial Regex Placeholder { get; }
 
     public static RenderedEmail Render(
@@ -86,7 +106,9 @@ public static partial class TemplateRenderer
     /// <para>
     /// Here rather than in the caller because the regex that decides what a
     /// placeholder is lives here. Two copies of it would agree until one was
-    /// changed.
+    /// changed — which is exactly what happened to the copy in the editor, and
+    /// why <c>PlaceholderGrammarTests</c> now compares the two character sets
+    /// rather than trusting a comment to keep them in step.
     /// </para>
     /// </remarks>
     public static IReadOnlySet<string> PlaceholdersIn(EmailTemplate template)
