@@ -6,6 +6,8 @@
   code rather than remembered
 - [runbooks/](runbooks/) — what to do when something breaks, written before the
   event rather than during it
+- [plans/](plans/) — features that are designed but not built, with the
+  decisions still open at the bottom of each
 - [architecture/](architecture/) — decision records, and how the deployments fit
   together
 
