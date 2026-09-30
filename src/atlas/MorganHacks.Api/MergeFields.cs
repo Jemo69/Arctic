@@ -44,26 +44,91 @@ namespace MorganHacks.Api;
 public static class MergeFields
 {
     /// <summary>
-    /// One placeholder, and the column behind it.
+    /// The headings the editor groups placeholders under.
     /// </summary>
     /// <remarks>
-    /// <see cref="Name"/> is derived rather than declared — see
-    /// <see cref="NameFor"/> — so there is no second spelling of a column to
-    /// keep in step with the first.
+    /// Words an organizer writing an email would use, not words from this side
+    /// of the screen. <c>Links</c> rather than <c>System</c> for the same
+    /// reason the names under it are <c>{{link.portal}}</c> rather than
+    /// <c>{{system.portalUrl}}</c>: the person reading the menu is looking for
+    /// a link to the portal.
     /// </remarks>
-    public sealed record MergeField(string Name, ApplicantColumn Column)
+    public static class Groups
     {
-        /// <summary>What the editor shows beside the name.</summary>
-        public string Description => Column.Description;
-
-        /// <summary>Whether a typed list of addresses can fill this.</summary>
-        public bool OnAddressLists => Column.OnAddressLists;
+        public const string Applicant = "About the person";
+        public const string Links = "Links";
     }
+
+    /// <summary>
+    /// One placeholder: what to type, what it says, and where it comes from.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Column"/> is null for anything that is not an answer on an
+    /// application. That is the whole difference between the two kinds today —
+    /// a column-backed field is looked up per recipient, and everything else
+    /// is the same for everybody in the send — and it is why
+    /// <see cref="Values"/> takes the configuration as well as the member.
+    /// <para>
+    /// For a column-backed field <see cref="Name"/> is derived rather than
+    /// declared — see <see cref="NameFor"/> — so there is no second spelling
+    /// of a column to keep in step with the first. A namespaced name has
+    /// nothing to derive from and is written out, which is why the ones below
+    /// sit next to the value that fills them.
+    /// </para>
+    /// </remarks>
+    public sealed record MergeField(
+        string Name,
+        string Group,
+        string Description,
+        bool OnAddressLists,
+        ApplicantColumn? Column = null);
+
+    /// <summary>
+    /// Our own addresses, which are the same for everybody in a send.
+    /// </summary>
+    /// <remarks>
+    /// These exist because the alternative is somebody typing
+    /// <c>https://www.morganhacks.com/portal</c> into a template, which is a
+    /// row in a database — so the same template on staging links to
+    /// production. The preview looks right, the test send looks right, and the
+    /// only way to find out is to click through and notice which site you
+    /// landed on.
+    /// <para>
+    /// <see cref="MergeField.OnAddressLists"/> is true for all of them: they
+    /// do not depend on who is receiving the mail, so a typed list of
+    /// addresses can fill them as well as a segment can.
+    /// </para>
+    /// <para>
+    /// The sign-in link is deliberately not here. It is per-recipient and
+    /// transactional-only, so offering it in a broadcast editor would be
+    /// offering a name that cannot be filled — and saying so needs the
+    /// catalogue to carry an audience, which is its own piece of work.
+    /// <c>{{link}}</c> keeps working exactly as it does now in the meantime.
+    /// </para>
+    /// </remarks>
+    private static readonly (string Name, string Description, Func<IConfiguration, string> Value)[] Links =
+    [
+        ("link.portal", "The hacker portal, where somebody checks their application.",
+            Origins.Portal),
+        ("link.forms", "The site the public forms are served from.",
+            Origins.Forms),
+        ("link.console", "The organizer console. For mail to the team, not to applicants.",
+            Origins.Console),
+    ];
 
     /// <summary>Every placeholder that resolves, in the order an editor lists them.</summary>
     public static readonly IReadOnlyList<MergeField> All =
-        [.. ApplicantColumns.Mergeable.Select(
-            column => new MergeField(NameFor(column.Column), column))];
+    [
+        .. ApplicantColumns.Mergeable.Select(column => new MergeField(
+            NameFor(column.Column),
+            Groups.Applicant,
+            column.Description,
+            column.OnAddressLists,
+            column)),
+
+        .. Links.Select(link => new MergeField(
+            link.Name, Groups.Links, link.Description, OnAddressLists: true)),
+    ];
 
     /// <summary>
     /// The one place a column name becomes a placeholder name.
@@ -99,14 +164,29 @@ public static class MergeFields
     /// name has an email and no first name, and the template greeting them
     /// would reach them as "Hi {{firstName}},".
     /// </remarks>
-    public static Dictionary<string, string> Values(SegmentMember member)
+    public static Dictionary<string, string> Values(
+        SegmentMember member, IConfiguration config)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
 
+        // The links first, so that if a column-backed name ever collided with
+        // one the person's own answer would win. It cannot collide today —
+        // NameFor produces no dots — and writing it in this order means it
+        // stays harmless if that ever stops being true.
+        foreach (var link in Links)
+        {
+            values[link.Name] = link.Value(config);
+        }
+
         foreach (var field in All)
         {
-            if (member.Fields.TryGetValue(field.Column.Column, out var stored)
-                && Reads(stored, field.Column) is { } value)
+            if (field.Column is not { } column)
+            {
+                continue;
+            }
+
+            if (member.Fields.TryGetValue(column.Column, out var stored)
+                && Reads(stored, column) is { } value)
             {
                 values[field.Name] = value;
             }
@@ -174,9 +254,9 @@ public static class MergeFields
     /// both want the same order twice.
     /// </remarks>
     public static IReadOnlyList<string> Unfilled(
-        IReadOnlySet<string> wanted, SegmentMember member)
+        IReadOnlySet<string> wanted, SegmentMember member, IConfiguration config)
     {
-        var values = Values(member);
+        var values = Values(member, config);
 
         return wanted.Where(placeholder => !values.ContainsKey(placeholder))
                      .OrderBy(placeholder => placeholder, StringComparer.Ordinal)

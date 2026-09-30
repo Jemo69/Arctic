@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Segments;
 
@@ -88,9 +89,12 @@ public class MergeFieldSchemaTests(ApplicationsDatabase db)
         // {{graduationYear}} is only fillable if graduation_year exists.
         var columns = await ColumnsAsync();
 
-        foreach (var field in MergeFields.All)
+        // Only the column-backed ones. A namespaced field like {{link.portal}}
+        // has no column to be checked against and is filled from configuration
+        // instead, which is what MergeFieldValueTests covers.
+        foreach (var field in MergeFields.All.Where(field => field.Column is not null))
         {
-            Assert.Contains(field.Column.Column, columns.Keys);
+            Assert.Contains(field.Column!.Column, columns.Keys);
             Assert.Equal(field.Name, MergeFields.NameFor(field.Column.Column));
         }
     }
@@ -105,6 +109,17 @@ public class MergeFieldSchemaTests(ApplicationsDatabase db)
 /// </remarks>
 public class MergeFieldValueTests
 {
+    /// <summary>
+    /// Configuration with none of the origins set.
+    /// </summary>
+    /// <remarks>
+    /// The link placeholders fall back to their localhost defaults, which is
+    /// what a developer sees. These tests are about the applicant values, and
+    /// an empty configuration keeps them from depending on a setting.
+    /// </remarks>
+    private static readonly IConfiguration NoOrigins =
+        new ConfigurationBuilder().Build();
+
     private static SegmentMember Member(params (string Column, object? Value)[] answers) =>
         new(null,
             "someone@example.invalid",
@@ -145,10 +160,10 @@ public class MergeFieldValueTests
         // Not "True", which is what .NET would hand back and what no email has
         // ever contained.
         Assert.Equal(
-            "yes", MergeFields.Values(Member(("first_time_hacker", true)))["firstTimeHacker"]);
+            "yes", MergeFields.Values(Member(("first_time_hacker", true)), NoOrigins)["firstTimeHacker"]);
 
         Assert.Equal(
-            "no", MergeFields.Values(Member(("first_time_hacker", false)))["firstTimeHacker"]);
+            "no", MergeFields.Values(Member(("first_time_hacker", false)), NoOrigins)["firstTimeHacker"]);
     }
 
     [Fact]
@@ -157,7 +172,7 @@ public class MergeFieldValueTests
         // 2027, never 2,027. A separator here is a number that looks like a
         // price in the middle of a sentence about school.
         Assert.Equal(
-            "2027", MergeFields.Values(Member(("graduation_year", 2027)))["graduationYear"]);
+            "2027", MergeFields.Values(Member(("graduation_year", 2027)), NoOrigins)["graduationYear"]);
     }
 
     [Fact]
@@ -165,7 +180,7 @@ public class MergeFieldValueTests
     {
         Assert.Equal(
             "Morgan State University",
-            MergeFields.Values(Member(("school", "Morgan State University")))["school"]);
+            MergeFields.Values(Member(("school", "Morgan State University")), NoOrigins)["school"]);
     }
 
     [Fact]
@@ -182,7 +197,7 @@ public class MergeFieldValueTests
             ("graduation_year", null),
             ("first_time_hacker", null));
 
-        var values = MergeFields.Values(member);
+        var values = MergeFields.Values(member, NoOrigins);
 
         Assert.Equal("someone@example.invalid", values["email"]);
         Assert.False(values.ContainsKey("firstName"));
@@ -198,7 +213,8 @@ public class MergeFieldValueTests
                 {
                     "email", "firstName", "school", "graduationYear", "shirtSize",
                 },
-                member));
+                member,
+                NoOrigins));
     }
 
     [Fact]
@@ -219,10 +235,61 @@ public class MergeFieldValueTests
     }
 
     [Fact]
-    public void A_list_of_addresses_can_fill_the_address_and_nothing_else()
+    public void A_list_of_addresses_can_fill_nothing_that_depends_on_the_person()
     {
-        Assert.Equal(
-            ["email"],
-            MergeFields.Fillable(new Segment.Addresses(["someone@example.invalid"])));
+        // The rule is not "only the address" — it is that a typed list carries
+        // no answers, so nothing derived from an application can be filled.
+        // Our own links are the same sentence for everybody in the send and
+        // are unaffected by who is receiving it, so they stay offered.
+        var fillable = MergeFields.Fillable(
+            new Segment.Addresses(["someone@example.invalid"]));
+
+        Assert.Contains("email", fillable);
+        Assert.Contains("link.portal", fillable);
+
+        foreach (var personal in new[]
+                 { "firstName", "lastName", "school", "graduationYear", "shirtSize" })
+        {
+            Assert.DoesNotContain(personal, fillable);
+        }
+    }
+
+    [Fact]
+    public void A_link_placeholder_is_filled_for_everybody_in_the_send()
+    {
+        // Not per-recipient, which is the point: it comes from configuration
+        // rather than from the member, so a typed address list fills it too.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["PublicBaseUrl"] = "https://portal.example.test/",
+                ["FormsBaseUrl"] = "https://forms.example.test",
+                ["ConsoleBaseUrl"] = "https://admin.example.test",
+            })
+            .Build();
+
+        var values = MergeFields.Values(Member(("email", "a@example.invalid")), config);
+
+        // The trailing slash is trimmed, because these are joined to paths.
+        Assert.Equal("https://portal.example.test", values["link.portal"]);
+        Assert.Equal("https://forms.example.test", values["link.forms"]);
+        Assert.Equal("https://admin.example.test", values["link.console"]);
+    }
+
+    [Fact]
+    public void A_link_placeholder_says_what_it_is()
+    {
+        // Same contract as every other placeholder: the editor shows this
+        // beside the name, and a name with nothing beside it is one somebody
+        // has to guess at.
+        var links = MergeFields.All.Where(field => field.Group == MergeFields.Groups.Links);
+
+        Assert.NotEmpty(links);
+        Assert.All(links, field =>
+        {
+            Assert.StartsWith("link.", field.Name);
+            Assert.False(string.IsNullOrWhiteSpace(field.Description));
+            Assert.Null(field.Column);
+        });
     }
 }

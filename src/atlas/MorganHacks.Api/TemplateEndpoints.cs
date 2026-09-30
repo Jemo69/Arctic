@@ -269,7 +269,7 @@ public static partial class TemplateEndpoints
     private static IResult Placeholders() => Results.Ok(new
     {
         placeholders = MergeFields.All
-            .Select(field => new { name = field.Name, description = field.Description }),
+            .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
     });
 
     // ------------------------------------------------------------- writing ---

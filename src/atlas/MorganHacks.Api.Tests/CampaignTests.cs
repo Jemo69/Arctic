@@ -968,14 +968,20 @@ public class CampaignTests(ApplicationsDatabase db)
             .GetProperty("placeholders").EnumerateArray().ToList();
 
         // Every column of applications.applications a message may fill itself
-        // in from, in the order the table declares them. Asserted in full
-        // rather than by count: the list is what an author is offered, and a
-        // name appearing here that the send cannot fill is the one failure
-        // this whole surface exists to remove.
+        // in from, in the order the table declares them, and then our own
+        // addresses. Asserted in full rather than by count: the list is what
+        // an author is offered, and a name appearing here that the send cannot
+        // fill is the one failure this whole surface exists to remove.
         Assert.Equal(
             ["email", "firstName", "lastName", "school", "levelOfStudy",
-             "graduationYear", "firstTimeHacker", "shirtSize", "country"],
+             "graduationYear", "firstTimeHacker", "shirtSize", "country",
+             "link.portal", "link.forms", "link.console"],
             listed.Select(p => p.GetProperty("name").GetString()));
+
+        // Grouped, so twelve names arrive under headings rather than as one
+        // list somebody scrolls.
+        Assert.All(listed, p =>
+            Assert.False(string.IsNullOrWhiteSpace(p.GetProperty("group").GetString())));
 
         // A name with nothing beside it is a name somebody has to guess at.
         Assert.All(listed, p =>
@@ -997,11 +1003,17 @@ public class CampaignTests(ApplicationsDatabase db)
 
         var applicants = Id(await Body(await Create(cookie, InStatus(eventId, "accepted"))));
 
-        Assert.Equal(["email"], await PlaceholdersOn(addresses, cookie));
+        // A typed list of addresses carries no answers, so nothing derived
+        // from an application is offered — but our own links do not depend on
+        // who is receiving the mail, so they are.
+        Assert.Equal(
+            ["email", "link.portal", "link.forms", "link.console"],
+            await PlaceholdersOn(addresses, cookie));
 
         Assert.Equal(
             ["email", "firstName", "lastName", "school", "levelOfStudy",
-             "graduationYear", "firstTimeHacker", "shirtSize", "country"],
+             "graduationYear", "firstTimeHacker", "shirtSize", "country",
+             "link.portal", "link.forms", "link.console"],
             await PlaceholdersOn(applicants, cookie));
     }
 

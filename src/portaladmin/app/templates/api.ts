@@ -382,9 +382,10 @@ function named(value: unknown): Placeholder[] {
       continue;
     }
 
-    const { name, description } = entry as {
+    const { name, description, group } = entry as {
       name?: unknown;
       description?: unknown;
+      group?: unknown;
     };
 
     if (typeof name !== "string" || name === "") {
@@ -397,6 +398,7 @@ function named(value: unknown): Placeholder[] {
         typeof description === "string" && description !== ""
           ? description
           : null,
+      group: typeof group === "string" && group !== "" ? group : null,
     });
   }
 

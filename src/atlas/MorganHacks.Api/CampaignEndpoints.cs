@@ -499,6 +499,7 @@ public static class CampaignEndpoints
         CampaignStore campaigns,
         TemplateStore templates,
         ISegmentResolver resolver,
+        IConfiguration config,
         CancellationToken ct)
     {
         var campaign = await campaigns.FindAsync(id, ct);
@@ -547,7 +548,7 @@ public static class CampaignEndpoints
         // campaign holds, MissingTemplate above is already saying the campaign
         // has to be drafted again — and showing the current wording is still
         // the most useful thing on the screen while somebody does.
-        var coverage = Covered(template, sendable);
+        var coverage = Covered(template, sendable, config);
 
         if (Missing(coverage) is { } gap)
         {
@@ -584,7 +585,7 @@ public static class CampaignEndpoints
 
             // A few of them, actually rendered. Of the sendable list for the
             // same reason the sample is.
-            renders = Rendered(template, sendable),
+            renders = Rendered(template, sendable, config),
         });
     }
 
@@ -624,7 +625,7 @@ public static class CampaignEndpoints
         return Results.Ok(new
         {
             placeholders = MergeFields.For(segment!)
-                .Select(field => new { name = field.Name, description = field.Description }),
+                .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
         });
     }
 
@@ -666,6 +667,7 @@ public static class CampaignEndpoints
         CampaignStore campaigns,
         TemplateStore templates,
         ISegmentResolver resolver,
+        IConfiguration config,
         ILogger<Campaign> log,
         CancellationToken ct)
     {
@@ -772,14 +774,14 @@ public static class CampaignEndpoints
 
         var sendable = resolved.Members.Where(m => !suppressed.ContainsKey(m.Email)).ToList();
 
-        if (Missing(Covered(template, sendable)) is { } gap)
+        if (Missing(Covered(template, sendable, config)) is { } gap)
         {
             return Results.BadRequest(new { error = gap });
         }
 
         var recipients = resolved.Members.Select(member =>
         {
-            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member));
+            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config));
             return new BroadcastRecipient(
                 member.PersonId, member.Email,
                 rendered.Subject, rendered.BodyHtml, rendered.BodyText,
@@ -962,7 +964,9 @@ public static class CampaignEndpoints
     /// </para>
     /// </remarks>
     private static Coverage Covered(
-        EmailTemplate? template, IReadOnlyList<SegmentMember> members)
+        EmailTemplate? template,
+        IReadOnlyList<SegmentMember> members,
+        IConfiguration config)
     {
         if (template is null)
         {
@@ -977,7 +981,7 @@ public static class CampaignEndpoints
 
         foreach (var member in members)
         {
-            var unfilled = MergeFields.Unfilled(wanted, member);
+            var unfilled = MergeFields.Unfilled(wanted, member, config);
             if (unfilled.Count == 0)
             {
                 continue;
@@ -1054,7 +1058,9 @@ public static class CampaignEndpoints
     /// </para>
     /// </remarks>
     private static IReadOnlyList<object> Rendered(
-        EmailTemplate? template, IReadOnlyList<SegmentMember> members)
+        EmailTemplate? template,
+        IReadOnlyList<SegmentMember> members,
+        IConfiguration config)
     {
         if (template is null || members.Count == 0)
         {
@@ -1065,7 +1071,7 @@ public static class CampaignEndpoints
         var chosen = new List<SegmentMember>();
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (members.FirstOrDefault(m => MergeFields.Unfilled(wanted, m).Count > 0) is { } gapped)
+        if (members.FirstOrDefault(m => MergeFields.Unfilled(wanted, m, config).Count > 0) is { } gapped)
         {
             chosen.Add(gapped);
             taken.Add(gapped.Email);
@@ -1086,7 +1092,7 @@ public static class CampaignEndpoints
 
         return chosen.Select(member =>
         {
-            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member));
+            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config));
 
             return (object)new
             {
@@ -1098,7 +1104,7 @@ public static class CampaignEndpoints
                 // Named on the render as well as counted in the coverage, so a
                 // screen showing one message can mark the hole in it without
                 // cross-referencing a list beside it.
-                unfilled = MergeFields.Unfilled(wanted, member),
+                unfilled = MergeFields.Unfilled(wanted, member, config),
             };
         }).ToList();
     }
