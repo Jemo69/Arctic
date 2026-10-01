@@ -314,6 +314,7 @@ public static class PortalEndpoints
         HttpContext http,
         IApplicantPortalStore store,
         IApplicationStore applications,
+        TriggeredEmails triggered,
         ILogger<RsvpRequest> log,
         CancellationToken ct)
     {
@@ -382,6 +383,20 @@ public static class PortalEndpoints
         log.LogInformation(
             "An applicant answered their RSVP. {PersonId} {from} {to} {event}",
             personId, change.From?.ToWire(), change.To.ToWire(), Events.RsvpAnswered);
+
+        // Hooked here as well as on the organizers' side, because this is
+        // where `confirmed` actually comes from. An organizer can confirm
+        // somebody by hand — StatusTransition permits accepted to confirmed
+        // whoever asks — but in practice almost every confirmation is an
+        // applicant pressing a button on this screen, and an automation that
+        // only fired for the handful done by hand would be the worst version
+        // of this feature: configured, enabled, and silent for the four
+        // hundred people it was set up for.
+        //
+        // Nothing here can fail the RSVP. The applicant has given up their
+        // spot or taken it, and telling them that did not save would have them
+        // press the other button.
+        await triggered.StatusReachedAsync(current.Id, change.To, ct);
 
         // Re-read rather than patched locally, so the screen redraws from the
         // same projection every other route serves. The lifecycle timestamps

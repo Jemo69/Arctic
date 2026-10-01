@@ -1,0 +1,197 @@
+/*
+ * The automatic emails panel, below the template gallery.
+ *
+ * Deliberately the same weight as the saved values panel beside it, and for
+ * the same reason: both are references somebody scans while they are writing
+ * an email rather than the thing they came to the screen for. Styling this one
+ * louder because it sends mail would make the page read as three competing
+ * halves — and the loudness that is needed is on the one row that is broken,
+ * not on the panel.
+ */
+
+.panel {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.heading {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.blurb {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.empty {
+  margin: 0;
+  padding: 20px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+/* The sentence is the widest thing in the row, because it is what somebody is
+   actually reading: "when somebody reaches accepted" is the part they are
+   checking says what they meant. */
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.when {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.sent {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 240px;
+}
+
+.token {
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The one thing in this panel that is allowed to shout, and it is --stop
+   rather than --warn: globals.css reserves --warn for "open, and waiting on a
+   person", and this is not waiting on anybody. The automation is enabled,
+   configured, and silently sending nothing. */
+.warning {
+  color: var(--stop);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.state {
+  flex: 0 0 auto;
+  width: 32px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.action {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.action:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sunken);
+}
+
+.field {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  /* The template key goes first, like the value column next door. On a narrow
+     screen what somebody is looking for is which occasion the row is about and
+     whether it is on; which template it sends is one tap away in the form. */
+  .target {
+    display: none;
+  }
+}

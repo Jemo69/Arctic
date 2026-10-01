@@ -600,6 +600,20 @@ export async function readFormChoices(): Promise<FormChoicesRead> {
       ? (body as { forms: unknown[] }).forms
       : [];
 
+  return { ok: true, forms: formChoices(rows) };
+}
+
+/**
+ * One form, taken apart rather than cast to.
+ *
+ * Shared by the two readers that need a picker's worth of forms. A row without
+ * a usable id would be an option nobody can choose, so it is dropped.
+ */
+function formChoices(rows: unknown): FormChoice[] {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
   const forms: FormChoice[] = [];
 
   for (const entry of rows) {
@@ -620,5 +634,203 @@ export async function readFormChoices(): Promise<FormChoicesRead> {
     });
   }
 
-  return { ok: true, forms };
+  return forms;
+}
+
+// ------------------------------------------------------- automatic emails ---
+
+/**
+ * One binding: when this happens, send that email.
+ *
+ * The API's shape. `occasion` is one of the two values the check constraint in
+ * 0049 allows, and `status` is the stored spelling of an application status —
+ * the same string the applicants screen filters on, because two spellings of
+ * one status is one of them being wrong somewhere.
+ *
+ * `templateMissing` is the cost of binding by key rather than by id, surfaced.
+ * Templates are copy-on-write, so a binding follows the name and keeps working
+ * when somebody fixes a typo; the other side of that is that deleting the
+ * template leaves the automation pointing at nothing. The screen has to say
+ * so, because the only other way anybody finds out is an applicant who was
+ * accepted and never told.
+ */
+export type EmailTrigger = {
+  id: string;
+  occasion: "form_submitted" | "status_reached";
+  formId: string | null;
+
+  /** Null where the form has been removed since the binding was made. */
+  formName: string | null;
+
+  status: string | null;
+  templateKey: string;
+  templateMissing: boolean;
+  enabled: boolean;
+
+  /** How many messages it has queued. Zero means it has never fired. */
+  sent: number;
+  updatedAt: string;
+};
+
+export type EmailTriggersRead =
+  | {
+      ok: true;
+      triggers: EmailTrigger[];
+
+      /** The season these belong to, so the screen can name it. */
+      eventId: string | null;
+      eventName: string | null;
+
+      /** The statuses the API will accept, in its own order. */
+      statuses: string[];
+
+      /** And the forms a submission trigger makes sense on. */
+      forms: FormChoice[];
+    }
+  | { ok: false; status: number; error: string };
+
+export type EmailTriggerWrite =
+  | { ok: true; triggers: EmailTrigger[] }
+  | { ok: false; error: string };
+
+/**
+ * The automations on the season being run.
+ *
+ * No event named, so the API answers for the newest one — the same defaulting
+ * the applicants screen relies on. A console that had to know an event id
+ * before it could draw its own screen would need a picker in front of a
+ * picker.
+ */
+export async function readEmailTriggers(): Promise<EmailTriggersRead> {
+  let response: Response;
+  try {
+    response = await apiFetch("/admin/email-triggers");
+  } catch {
+    return { ok: false, status: 0, error: "The API could not be reached." };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: why(response.status, "Automatic emails could not be loaded."),
+    };
+  }
+
+  const body = await readJson(response);
+  const chosen = body?.chosen as { id?: unknown; name?: unknown } | null | undefined;
+
+  return {
+    ok: true,
+    triggers: emailTriggers(body),
+    eventId: typeof chosen?.id === "string" ? chosen.id : null,
+    eventName: typeof chosen?.name === "string" ? chosen.name : null,
+    statuses: Array.isArray(body?.statuses)
+      ? body.statuses.filter((status): status is string => typeof status === "string")
+      : [],
+    forms: formChoices(body?.forms),
+  };
+}
+
+export async function writeEmailTrigger(binding: {
+  eventId: string | null;
+  occasion: EmailTrigger["occasion"];
+  formId: string | null;
+  status: string | null;
+  templateKey: string;
+}): Promise<EmailTriggerWrite> {
+  return await emailTriggerWrite("/admin/email-triggers", {
+    method: "PUT",
+    body: JSON.stringify(binding),
+  });
+}
+
+export async function setEmailTriggerEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<EmailTriggerWrite> {
+  return await emailTriggerWrite(
+    `/admin/email-triggers/${encodeURIComponent(id)}/enabled`,
+    { method: "PUT", body: JSON.stringify({ enabled }) },
+  );
+}
+
+export async function removeEmailTrigger(id: string): Promise<EmailTriggerWrite> {
+  return await emailTriggerWrite(
+    `/admin/email-triggers/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
+/**
+ * One write, and the whole list back.
+ *
+ * The same contract the saved values endpoint has, and for the same reason:
+ * two people editing at once means one of them sees the other's row appear
+ * rather than a stale screen that disagrees with what a decision will send.
+ */
+async function emailTriggerWrite(
+  path: string,
+  init: RequestInit,
+): Promise<EmailTriggerWrite> {
+  let response: Response;
+  try {
+    response = await apiFetch(path, init);
+  } catch {
+    return { ok: false, error: "The API could not be reached." };
+  }
+
+  if (!response.ok) {
+    // The API's own sentence where it has one. It knows why a template or a
+    // form was refused and this does not.
+    const body = await readJson(response);
+    const error = typeof body?.error === "string" ? body.error : null;
+    return { ok: false, error: error ?? why(response.status, "That could not be saved.") };
+  }
+
+  return { ok: true, triggers: emailTriggers(await readJson(response)) };
+}
+
+/**
+ * Taken apart rather than cast to, like every other reader here.
+ *
+ * A row without an id could not be switched off or removed, so it is dropped
+ * rather than drawn as a binding nobody can act on.
+ */
+function emailTriggers(body: { [key: string]: unknown } | null): EmailTrigger[] {
+  if (!Array.isArray(body?.triggers)) {
+    return [];
+  }
+
+  const triggers: EmailTrigger[] = [];
+
+  for (const entry of body.triggers) {
+    if (typeof entry !== "object" || entry === null) continue;
+
+    const row = entry as { [key: string]: unknown };
+    const { id, occasion } = row;
+
+    if (typeof id !== "string" || id === "") continue;
+    if (occasion !== "form_submitted" && occasion !== "status_reached") continue;
+
+    triggers.push({
+      id,
+      occasion,
+      formId: typeof row.formId === "string" ? row.formId : null,
+      formName:
+        typeof row.formName === "string" && row.formName !== "" ? row.formName : null,
+      status: typeof row.status === "string" ? row.status : null,
+      templateKey: typeof row.templateKey === "string" ? row.templateKey : "",
+
+      // Absent reads as present, which is the safe way round: a console
+      // talking to an older API would otherwise warn about every binding it
+      // can see.
+      templateMissing: row.templateMissing === true,
+      enabled: row.enabled !== false,
+      sent: typeof row.sent === "number" ? row.sent : 0,
+      updatedAt: typeof row.updatedAt === "string" ? row.updatedAt : "",
+    });
+  }
+
+  return triggers;
 }

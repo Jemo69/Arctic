@@ -7,7 +7,7 @@ import type {
   TemplateFormat,
   TemplateRow,
 } from "@/components/templates/types";
-import { createTemplate, discardSettingsDraft, fetchTemplateHtml, queueTemplateTest, readSavedValues, removeSavedValue, removeTemplate, renderPreview, saveSettingsDraft, saveTemplateVisibility, updateTemplate, writeSavedValue } from "./api";
+import { createTemplate, discardSettingsDraft, fetchTemplateHtml, queueTemplateTest, readSavedValues, removeEmailTrigger, removeSavedValue, removeTemplate, renderPreview, saveSettingsDraft, saveTemplateVisibility, setEmailTriggerEnabled, updateTemplate, writeEmailTrigger, writeSavedValue } from "./api";
 import { validateDesign, validateSettings, type TemplateFieldErrors } from "@/components/templates/validation";
 
 /**
@@ -283,4 +283,79 @@ export async function loadSavedValues() {
   return read.ok
     ? { ok: true as const, values: read.values }
     : { ok: false as const, error: read.error };
+}
+
+// ------------------------------------------------------- automatic emails ---
+
+/**
+ * Binds a template to an occasion, or rebinds one.
+ *
+ * None of the checks here is the one that holds. The API refuses a broadcast
+ * template, a form from another season and a status it does not recognise
+ * whoever asks, and 0049's constraints refuse the row underneath that; these
+ * are so somebody pressing Save gets an answer without a round trip when the
+ * form is obviously incomplete.
+ */
+export async function saveEmailTrigger(input: {
+  eventId: string | null;
+  occasion: "form_submitted" | "status_reached";
+  formId: string | null;
+  status: string | null;
+  templateKey: string;
+}) {
+  if (typeof input?.templateKey !== "string" || input.templateKey === "") {
+    return { ok: false as const, error: "Choose an email to send." };
+  }
+
+  if (input.occasion === "form_submitted" && !input.formId) {
+    return { ok: false as const, error: "Choose a form." };
+  }
+
+  if (input.occasion === "status_reached" && !input.status) {
+    return { ok: false as const, error: "Choose what has to happen." };
+  }
+
+  const result = await writeEmailTrigger({
+    eventId: input.eventId,
+    occasion: input.occasion,
+
+    // Only the one the occasion uses. Sending both would be sending a row the
+    // check constraint refuses, and the refusal would arrive as a 500 rather
+    // than as the sentence above.
+    formId: input.occasion === "form_submitted" ? input.formId : null,
+    status: input.occasion === "status_reached" ? input.status : null,
+    templateKey: input.templateKey,
+  });
+
+  if (result.ok) {
+    revalidatePath("/templates");
+  }
+
+  return result;
+}
+
+export async function switchEmailTrigger(id: string, enabled: boolean) {
+  if (typeof id !== "string" || id === "" || typeof enabled !== "boolean") {
+    return { ok: false as const, error: "No such automatic email." };
+  }
+
+  const result = await setEmailTriggerEnabled(id, enabled);
+  if (result.ok) {
+    revalidatePath("/templates");
+  }
+
+  return result;
+}
+
+export async function deleteEmailTrigger(id: string) {
+  if (typeof id !== "string" || id === "") {
+    return { ok: false as const, error: "No such automatic email." };
+  }
+
+  const result = await removeEmailTrigger(id);
+  if (result.ok) {
+    revalidatePath("/templates");
+  }
+
+  return result;
 }
