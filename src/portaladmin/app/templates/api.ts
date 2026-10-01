@@ -404,3 +404,137 @@ function named(value: unknown): Placeholder[] {
 
   return items;
 }
+
+// ----------------------------------------------------------- saved values ---
+
+export type SavedValue = {
+  name: string;
+  value: string;
+  description: string | null;
+  updatedAt: string;
+};
+
+export type SavedValuesRead =
+  | { ok: true; values: SavedValue[] }
+  | { ok: false; status: number; error: string };
+
+export type SavedValueWrite =
+  | { ok: true; values: SavedValue[] }
+  | { ok: false; error: string };
+
+/**
+ * The values an organizer saved, newest spelling of each.
+ *
+ * Read on the templates screen rather than its own, because that is where they
+ * are used and the permission is the same one.
+ */
+export async function readSavedValues(): Promise<SavedValuesRead> {
+  let response: Response;
+  try {
+    response = await apiFetch("/admin/saved-values");
+  } catch {
+    return { ok: false, status: 0, error: "The API could not be reached." };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: why(response.status, "Saved values could not be loaded."),
+    };
+  }
+
+  return { ok: true, values: savedValues(await readJson(response)) };
+}
+
+export async function writeSavedValue(
+  name: string,
+  value: string,
+  description: string | null,
+): Promise<SavedValueWrite> {
+  return await savedValueWrite(
+    `/admin/saved-values/${encodeURIComponent(name)}`,
+    { method: "PUT", body: JSON.stringify({ value, description }) },
+  );
+}
+
+export async function removeSavedValue(name: string): Promise<SavedValueWrite> {
+  return await savedValueWrite(
+    `/admin/saved-values/${encodeURIComponent(name)}`,
+    { method: "DELETE" },
+  );
+}
+
+/**
+ * One write, and the whole list back.
+ *
+ * The API answers every write with the current list, so the screen never has
+ * to guess what it now looks like — which is what stops two people editing at
+ * once from leaving one of them looking at a row that is gone.
+ */
+async function savedValueWrite(
+  path: string,
+  init: RequestInit,
+): Promise<SavedValueWrite> {
+  let response: Response;
+  try {
+    response = await apiFetch(path, init);
+  } catch {
+    return { ok: false, error: "The API could not be reached." };
+  }
+
+  if (!response.ok) {
+    // The API's own sentence where it has one. It knows why a name was
+    // refused and this does not.
+    const body = await readJson(response);
+    const error = typeof body?.error === "string" ? body.error : null;
+    return { ok: false, error: error ?? why(response.status, "That could not be saved.") };
+  }
+
+  return { ok: true, values: savedValues(await readJson(response)) };
+}
+
+async function readJson(response: Response): Promise<{ [key: string]: unknown } | null> {
+  try {
+    return (await response.json()) as { [key: string]: unknown };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Taken apart rather than cast to, like `named` above.
+ *
+ * A row without a usable name would become a `{{saved.undefined}}` somebody
+ * inserts, so it is dropped instead.
+ */
+function savedValues(body: { [key: string]: unknown } | null): SavedValue[] {
+  if (!Array.isArray(body?.values)) {
+    return [];
+  }
+
+  const values: SavedValue[] = [];
+
+  for (const entry of body.values) {
+    if (typeof entry !== "object" || entry === null) continue;
+
+    const { name, value, description, updatedAt } = entry as {
+      name?: unknown;
+      value?: unknown;
+      description?: unknown;
+      updatedAt?: unknown;
+    };
+
+    if (typeof name !== "string" || name === "") continue;
+
+    values.push({
+      name,
+      value: typeof value === "string" ? value : "",
+      description:
+        typeof description === "string" && description !== "" ? description : null,
+      updatedAt: typeof updatedAt === "string" ? updatedAt : "",
+    });
+  }
+
+  return values;
+}
