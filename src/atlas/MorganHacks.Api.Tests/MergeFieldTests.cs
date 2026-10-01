@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Segments;
 using MorganHacks.Applications.Services;
+using MorganHacks.Lark.Data.Data;
 
 namespace MorganHacks.Api.Tests;
 
@@ -347,6 +348,54 @@ public class MergeFieldValueTests
 
         Assert.DoesNotContain(values.Keys, key => key.StartsWith("event.", StringComparison.Ordinal));
         Assert.True(values.ContainsKey("link.portal"));
+    }
+
+    [Fact]
+    public void A_saved_value_is_offered_under_its_prefix_and_fills_from_the_row()
+    {
+        var saved = new List<SavedValue>
+        {
+            new("discordInvite", "https://discord.gg/example", "The server everyone joins.", default),
+        };
+
+        var offered = MergeFields.Including(saved).Select(field => field.Name).ToList();
+        Assert.Contains("saved.discordInvite", offered);
+
+        var values = MergeFields.Values(
+            Member(("email", "a@example.invalid")), NoOrigins, season: null, saved: saved);
+
+        Assert.Equal("https://discord.gg/example", values["saved.discordInvite"]);
+    }
+
+    [Fact]
+    public void A_saved_value_without_a_description_still_says_something()
+    {
+        // The editor lays a row out around a description, and a name with
+        // nothing beside it is one somebody has to guess at. The row's own
+        // sentence where there is one, a fallback where there is not.
+        var saved = new List<SavedValue> { new("venue", "Room 214", null, default) };
+
+        var field = Assert.Single(
+            MergeFields.Including(saved), f => f.Name == "saved.venue");
+
+        Assert.False(string.IsNullOrWhiteSpace(field.Description));
+        Assert.Equal(MergeFields.Groups.Saved, field.Group);
+    }
+
+    [Fact]
+    public void A_saved_value_cannot_stand_in_for_a_built_in_name()
+    {
+        // The collision story, which is structural rather than checked. The
+        // prefix is reserved and 0045 forbids a dot in the name, so a row
+        // called "portal" becomes {{saved.portal}} and can never be
+        // {{link.portal}} however either set grows.
+        var saved = new List<SavedValue> { new("portal", "https://evil.example", null, default) };
+
+        var values = MergeFields.Values(
+            Member(("email", "a@example.invalid")), NoOrigins, season: null, saved: saved);
+
+        Assert.Equal("https://evil.example", values["saved.portal"]);
+        Assert.Equal("http://localhost:3000", values["link.portal"]);
     }
 
     [Fact]
