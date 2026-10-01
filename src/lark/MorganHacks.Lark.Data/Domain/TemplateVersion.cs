@@ -40,7 +40,10 @@ public sealed record TemplateVersion(
     string? FromName = null,
     string? PreviewText = null,
     bool ClickTracking = false,
-    string? Name = null)
+    string? Name = null,
+
+    /// <summary>The form this email is about, where it is about one.</summary>
+    Guid? FormId = null)
 {
     /// <summary>
     /// The same template in the shape the renderer understands.
@@ -78,7 +81,17 @@ public sealed record TemplateDraft(
     string? FromName,
     string? PreviewText = null,
     bool ClickTracking = false,
-    string? Name = null);
+    string? Name = null,
+
+    /// <summary>
+    /// The form this email is about, or null for the many that are about none.
+    /// </summary>
+    /// <remarks>
+    /// Carried on the draft rather than set separately, because a revision
+    /// writes a new row: a template whose form was not resent would silently
+    /// lose it on the next save.
+    /// </remarks>
+    Guid? FormId = null);
 
 /// <summary>How a save ended.</summary>
 public enum TemplateWriteResult

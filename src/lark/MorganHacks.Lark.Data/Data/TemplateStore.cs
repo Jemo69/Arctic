@@ -26,7 +26,8 @@ public sealed class TemplateStore(NpgsqlDataSource dataSource)
     {
         const string sql = """
             SELECT id, key, kind, subject, body_html, body_text,
-                   from_local, from_domain, reply_to, from_name, preview_text, click_tracking
+                   from_local, from_domain, reply_to, from_name, preview_text, click_tracking,
+                   form_id
               FROM notify.templates
              WHERE key = @key AND superseded_at IS NULL
             """;
@@ -47,6 +48,7 @@ public sealed class TemplateStore(NpgsqlDataSource dataSource)
             await reader.IsDBNullAsync(8, ct) ? null : reader.GetString(8),
             await reader.IsDBNullAsync(9, ct) ? null : reader.GetString(9),
             await reader.IsDBNullAsync(10, ct) ? null : reader.GetString(10),
-            reader.GetBoolean(11));
+            reader.GetBoolean(11),
+            await reader.IsDBNullAsync(12, ct) ? null : reader.GetGuid(12));
     }
 }
