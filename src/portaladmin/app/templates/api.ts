@@ -334,21 +334,20 @@ export async function renderPreview(input: {
  */
 export async function readPlaceholders(
   campaignId?: string | null,
-  templateKey?: string | null,
+  formId?: string | null,
 ): Promise<PlaceholderRead> {
   // The campaign's own list where there is a campaign, because it also narrows
-  // by what its segment can fill. Otherwise the template's, named so the API
-  // can decide whether to offer the form group — it only does when that
-  // template actually names a form.
+  // by what its segment can fill. Otherwise the general one, told which form
+  // the editor currently has chosen so it can offer the form group.
   //
-  // The key is the saved template rather than the draft, so picking a form and
-  // not saving leaves the group out until the autosave lands. Offering it from
-  // the draft would mean the menu disagreeing with what a send can fill, which
-  // is the one thing this list exists to prevent.
+  // The form the author has picked, not the one on the saved template. The
+  // editor works on a working draft and choosing a form writes it there — so
+  // reading the live row meant the group never appeared until a save and a
+  // reload, which read as the feature simply not working.
   const path = campaignId
     ? `/admin/campaigns/${encodeURIComponent(campaignId)}/placeholders`
-    : templateKey
-      ? `/admin/templates/placeholders?template=${encodeURIComponent(templateKey)}`
+    : formId
+      ? `/admin/templates/placeholders?form=${encodeURIComponent(formId)}`
       : "/admin/templates/placeholders";
 
   let response: Response;
