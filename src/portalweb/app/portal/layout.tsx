@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { HACKER_PORTAL, isOn } from "@/lib/features";
+import Image from "next/image";
+import logo from "@/public/brands/morganhacks.png";
 import { siteConfig } from "@/site.config";
 import "./portal.css";
 
@@ -46,7 +48,24 @@ export default function PortalLayout({
           — a client-side navigation would carry this one along with it.
         */}
         <a className="portal__brand" href="/">
-          MorganHacks <span>portal</span>
+          {/*
+            The mark rather than the words. The console shows it on every
+            screen an organizer sees, and an applicant arriving from an email
+            should land on something they recognise as the same event rather
+            than on a wordmark typed out in the page's own font.
+
+            priority, because this is above the fold on every screen in the
+            portal and a logo that fades in after the text has settled reads
+            as a page still loading.
+          */}
+          <Image
+            src={logo}
+            alt="MorganHacks"
+            className="portal__mark"
+            height={28}
+            priority
+          />
+          <span>portal</span>
         </a>
       </header>
 

@@ -44,20 +44,33 @@ body {
 
 /* Chrome ------------------------------------------------------------------ */
 
+/* Aligned on centre rather than baseline now the mark is in here: a baseline
+   is a property of text, and an image has none to share with the word beside
+   it. */
 .portal__bar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.9rem 1.15rem;
+  padding: 0.75rem 1.15rem;
   border-bottom: 1px solid var(--line);
   background: var(--raised);
 }
 
 .portal__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   font-weight: 600;
   letter-spacing: -0.01em;
   text-decoration: none;
+}
+
+/* Height-constrained, width auto. The mark is wider than it is tall and a
+   fixed width would squash it the moment somebody swaps the file. */
+.portal__mark {
+  width: auto;
+  height: 34px;
 }
 
 .portal__brand span {
@@ -140,25 +153,43 @@ main {
 
 /* Type -------------------------------------------------------------------- */
 
+/*
+ * Two steps rather than one and a half. 1.45rem against 1rem is close enough
+ * that a section heading and the page's own title read as the same size, so a
+ * screen with three panels on it looks like one unbroken block of text.
+ *
+ * Deliberately NOT the display face, which was tried and looks wrong: it is a
+ * condensed serif drawn for the public site's posters, and on "Sign in" above
+ * a form it reads as decoration rather than as a label. The portal is an
+ * application, and its headings should be the same face as the sentence under
+ * them.
+ */
 h1 {
-  font-size: 1.45rem;
+  font-size: 1.75rem;
   font-weight: 600;
-  letter-spacing: -0.015em;
-  margin: 0 0 0.35rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0 0 0.4rem;
 }
 
 h2 {
-  font-size: 1rem;
+  font-size: 1.0625rem;
   font-weight: 600;
-  margin: 0 0 0.6rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.7rem;
 }
 
 p {
+  max-width: 68ch;
   margin: 0 0 1rem;
+  line-height: 1.55;
 }
 
 .lede {
+  max-width: 62ch;
   color: var(--muted);
+  font-size: 1.0625rem;
+  line-height: 1.5;
   margin-bottom: 1.75rem;
 }
 
