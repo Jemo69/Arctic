@@ -131,9 +131,22 @@ public sealed class MessageQueue(NpgsqlDataSource dataSource)
              )
             RETURNING m.id, m.campaign_id, m.to_email, m.priority, m.attempts,
                       m.rendered_subject, m.rendered_body_html, m.rendered_body_text,
-                      COALESCE(c.email_settings->>'fromEmail', t.from_local || '@' || t.from_domain),
-                      COALESCE(c.email_settings->>'fromName', t.from_name),
-                      NULLIF(COALESCE(c.email_settings->>'replyTo', t.reply_to), ''),
+                      -- NULLIF inside the COALESCE, not outside it, and that
+                      -- placement is the whole point. A campaign's settings
+                      -- carry '' for anything nobody filled in --
+                      -- CampaignEmailSettings holds plain strings, so unset is
+                      -- empty rather than absent -- and ->> hands back that ''
+                      -- as a value. COALESCE only skips NULL, so without the
+                      -- inner NULLIF an empty campaign field beats the
+                      -- template's and the override wins by saying nothing.
+                      --
+                      -- What that looked like: a sender name set on the
+                      -- template, a campaign built before it or saved with the
+                      -- field blank, and mail arriving from "mail" because the
+                      -- header went out as a bare address.
+                      COALESCE(NULLIF(c.email_settings->>'fromEmail', ''), t.from_local || '@' || t.from_domain),
+                      COALESCE(NULLIF(c.email_settings->>'fromName', ''), t.from_name),
+                      NULLIF(COALESCE(NULLIF(c.email_settings->>'replyTo', ''), t.reply_to), ''),
                       m.correlation_id, COALESCE(c.tracking_enabled, t.click_tracking)
             """;
 

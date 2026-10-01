@@ -13,6 +13,8 @@ One page each, each ending with an escalation name.
   failure where everything looks healthy
 - [The first production deploy](first-production-deploy.md) — what is missing
   today, and why the first run is meant to fail
+- [Mail is not arriving](mail-is-not-arriving.md) — three causes that all look
+  like success, and the one test that tells them apart
 
 ## Still to write
 

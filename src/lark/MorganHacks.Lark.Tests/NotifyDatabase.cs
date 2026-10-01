@@ -48,6 +48,40 @@ public sealed class NotifyDatabase : IAsyncLifetime
     }
 
     /// <summary>Creates a campaign and returns its id.</summary>
+    /// <summary>
+    /// A campaign whose template carries a sender name, and whose own settings
+    /// are whatever a test hands it.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="AddCampaignAsync"/> because what is being
+    /// tested is the interaction between the two: a template that names a
+    /// sender and a campaign that does not, which is the shape every campaign
+    /// has when nobody filled the field in.
+    /// </remarks>
+    public async Task<Guid> AddNamedSenderCampaignAsync(
+        string? templateFromName, string? settingsJson)
+    {
+        await using var cmd = DataSource.CreateCommand(Q);
+
+        cmd.Parameters.AddWithValue("fromName", (object?)templateFromName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("settings", (object?)settingsJson ?? DBNull.Value);
+
+        return (Guid)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    private const string Q = @"
+            WITH t AS (
+              INSERT INTO notify.templates
+                (key, kind, subject, body_html, body_text,
+                 from_local, from_domain, from_name)
+              VALUES (gen_random_uuid()::text, 'broadcast', 's', '<p>h</p>', 't',
+                      'mail', 'morganhacks.test', @fromName)
+              RETURNING id
+            )
+            INSERT INTO notify.campaigns (template_id, name, status, email_settings)
+            SELECT id, 'test', 'queued', @settings::jsonb FROM t
+            RETURNING id";
+
     public async Task<Guid> AddCampaignAsync(
         string kind = "transactional", string? replyTo = null)
     {

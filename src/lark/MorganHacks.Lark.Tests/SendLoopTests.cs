@@ -217,6 +217,66 @@ public class SendLoopTests(NotifyDatabase db) : IClassFixture<NotifyDatabase>
     }
 
     [Fact]
+    public async Task A_campaign_that_names_no_sender_keeps_the_templates_name()
+    {
+        // The bug this exists for. CampaignEmailSettings holds plain strings,
+        // so a field nobody filled in is "" rather than absent -- and ->> hands
+        // that back as a value, which COALESCE happily prefers to the
+        // template's name. The override then wins by saying nothing, and mail
+        // that should arrive from "MorganHacks" arrives from "mail".
+        var campaign = await db.AddNamedSenderCampaignAsync(
+            templateFromName: "MorganHacks",
+            settingsJson: """{"subject":"s","previewText":"","fromName":"","fromEmail":"mail@morganhacks.test","replyTo":""}""");
+
+        await db.QueueAsync(campaign, Email("recipient"));
+        var clock = new FakeTimeProvider();
+        var provider = new FakeProvider(_ => SendOutcome.Sent("ses-message-name"));
+
+        await RunOnce(LoopWith(provider, clock), clock);
+
+        Assert.All(provider.Sent, m =>
+            Assert.Equal("MorganHacks <mail@morganhacks.test>", m.From));
+    }
+
+    [Fact]
+    public async Task A_campaign_that_names_a_sender_still_overrides_the_template()
+    {
+        // The other direction, and the reason the fix is NULLIF rather than
+        // dropping the override. A name somebody actually typed has to win.
+        var campaign = await db.AddNamedSenderCampaignAsync(
+            templateFromName: "MorganHacks",
+            settingsJson: """{"subject":"s","previewText":"","fromName":"MorganHacks Registration","fromEmail":"mail@morganhacks.test","replyTo":""}""");
+
+        await db.QueueAsync(campaign, Email("recipient"));
+        var clock = new FakeTimeProvider();
+        var provider = new FakeProvider(_ => SendOutcome.Sent("ses-message-name-2"));
+
+        await RunOnce(LoopWith(provider, clock), clock);
+
+        Assert.All(provider.Sent, m =>
+            Assert.Equal("MorganHacks Registration <mail@morganhacks.test>", m.From));
+    }
+
+    [Fact]
+    public async Task A_template_with_no_sender_name_sends_the_bare_address()
+    {
+        // Neither side names one, which is what every template did before the
+        // column existed. The address alone is correct here -- what is not
+        // correct is reaching it because an empty override shadowed a name.
+        var campaign = await db.AddNamedSenderCampaignAsync(
+            templateFromName: null,
+            settingsJson: """{"subject":"s","previewText":"","fromName":"","fromEmail":"mail@morganhacks.test","replyTo":""}""");
+
+        await db.QueueAsync(campaign, Email("recipient"));
+        var clock = new FakeTimeProvider();
+        var provider = new FakeProvider(_ => SendOutcome.Sent("ses-message-name-3"));
+
+        await RunOnce(LoopWith(provider, clock), clock);
+
+        Assert.All(provider.Sent, m => Assert.Equal("mail@morganhacks.test", m.From));
+    }
+
+    [Fact]
     public async Task A_reply_reaches_an_inbox_somebody_reads()
     {
         // The from address has no mailbox behind it. Without a reply-to, a
