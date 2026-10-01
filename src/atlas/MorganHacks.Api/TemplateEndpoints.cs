@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using MorganHacks.Identity.Domain;
 using MorganHacks.Applications.Forms;
+using MorganHacks.Applications.Segments;
 using MorganHacks.Lark.Data.Data;
 using MorganHacks.Lark.Data.Domain;
 using MorganHacks.Observability;
@@ -297,6 +298,14 @@ public static partial class TemplateEndpoints
     /// refuse. That check is the only reason this takes an id at all rather
     /// than a boolean the client could simply assert.
     /// </para>
+    /// <para>
+    /// The form's own questions come back with it, as
+    /// <c>{{form.answer.&lt;key&gt;}}</c>, so an author can echo what somebody
+    /// answered rather than describe it. Its <b>published</b> version's — see
+    /// <see cref="MergeFields.QuestionsOn"/> — and no answer is read: which
+    /// names exist is a property of the form, and this is called on a
+    /// keystroke.
+    /// </para>
     /// </remarks>
     private static async Task<IResult> Placeholders(
         Guid? form,
@@ -304,11 +313,17 @@ public static partial class TemplateEndpoints
         SavedValueStore savedValues,
         CancellationToken ct)
     {
-        var aboutAForm = form is { } formId && await forms.ByIdAsync(formId, ct) is not null;
+        var paper = form is { } formId ? await forms.ByIdAsync(formId, ct) : null;
+
+        var questions = MergeFields.QuestionsOn(
+            paper, paper is null ? null : await forms.PublishedAsync(paper.Id, ct));
 
         return Results.Ok(new
         {
-            placeholders = MergeFields.Including(await savedValues.ListAsync(ct), aboutAForm)
+            placeholders = MergeFields.Including(
+                    await savedValues.ListAsync(ct),
+                    aboutAForm: paper is not null,
+                    answers: FormAnswers.Asked(questions))
                 .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
         });
     }
