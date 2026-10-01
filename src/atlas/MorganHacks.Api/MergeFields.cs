@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
+using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Segments;
+using MorganHacks.Applications.Services;
 using MorganHacks.Lark.Data.Domain;
 
 namespace MorganHacks.Api;
@@ -56,6 +58,7 @@ public static class MergeFields
     public static class Groups
     {
         public const string Applicant = "About the person";
+        public const string Event = "The event";
         public const string Links = "Links";
     }
 
@@ -116,6 +119,61 @@ public static class MergeFields
             Origins.Console),
     ];
 
+    /// <summary>
+    /// The season itself: its name, its dates, how many are coming.
+    /// </summary>
+    /// <remarks>
+    /// Written out rather than derived from the columns of
+    /// <c>applications.events</c>, which is the opposite of what
+    /// <see cref="ApplicantColumns"/> does and is a deliberate difference. That
+    /// catalogue is derived because it is wide, changes with migrations, and
+    /// its whole risk is a column quietly becoming mailable. This one is seven
+    /// fields on a table with one row a year, and every one of them needs a
+    /// sentence and a format that the column type cannot supply —
+    /// <c>registration_closes_at</c> is a <c>timestamptz</c> like three others
+    /// and the only one an applicant is ever shown.
+    /// <para>
+    /// Dates read through <see cref="EventZone"/>, which is the reason these
+    /// exist at all now and did not before. PR #71 withheld
+    /// <c>rsvp_deadline</c> from the applicant catalogue in as many words —
+    /// "nothing here knows the event's timezone, so a midnight deadline
+    /// rendered in UTC lands on the wrong calendar day for exactly the people
+    /// it matters to". The zone is known now, and the sentence these render is
+    /// the one the console and the public form already show.
+    /// </para>
+    /// <para>
+    /// A date nobody has set yet returns null, which keeps it out of the
+    /// dictionary, which leaves the placeholder standing and lets the
+    /// campaign's coverage check refuse the send. That is the case worth
+    /// getting right: an email promising a deadline the team has not agreed is
+    /// worse than one that cannot be sent.
+    /// </para>
+    /// </remarks>
+    private static readonly (string Name, string Description, Func<EventDetail, string?> Value)[] Season =
+    [
+        ("event.name", "The event's name, as the console spells it.",
+            e => string.IsNullOrWhiteSpace(e.Name) ? null : e.Name),
+
+        ("event.startsAt", "When the event starts.",
+            e => Moment(e.StartsAt)),
+        ("event.endsAt", "When the event ends.",
+            e => Moment(e.EndsAt)),
+
+        ("event.registrationOpensAt", "When applications open.",
+            e => Moment(e.RegistrationOpensAt)),
+        ("event.registrationClosesAt", "The application deadline.",
+            e => Moment(e.RegistrationClosesAt)),
+        ("event.decisionsAnnouncedAt", "When applicants hear back.",
+            e => Moment(e.DecisionsAnnouncedAt)),
+
+        ("event.capacity", "How many people the event can take.",
+            e => e.Capacity?.ToString(CultureInfo.InvariantCulture)),
+    ];
+
+    /// <summary>A date as a person reads it, or null for one nobody has set.</summary>
+    private static string? Moment(DateTimeOffset? instant) =>
+        instant is { } set ? EventZone.Readable(set) : null;
+
     /// <summary>Every placeholder that resolves, in the order an editor lists them.</summary>
     public static readonly IReadOnlyList<MergeField> All =
     [
@@ -125,6 +183,9 @@ public static class MergeFields
             column.Description,
             column.OnAddressLists,
             column)),
+
+        .. Season.Select(field => new MergeField(
+            field.Name, Groups.Event, field.Description, OnAddressLists: true)),
 
         .. Links.Select(link => new MergeField(
             link.Name, Groups.Links, link.Description, OnAddressLists: true)),
@@ -165,17 +226,32 @@ public static class MergeFields
     /// would reach them as "Hi {{firstName}},".
     /// </remarks>
     public static Dictionary<string, string> Values(
-        SegmentMember member, IConfiguration config)
+        SegmentMember member, IConfiguration config, EventDetail? season = null)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // The links first, so that if a column-backed name ever collided with
-        // one the person's own answer would win. It cannot collide today —
-        // NameFor produces no dots — and writing it in this order means it
-        // stays harmless if that ever stops being true.
+        // Everything that is the same for the whole send first, so that if a
+        // column-backed name ever collided with one the person's own answer
+        // would win. It cannot collide today — NameFor produces no dots — and
+        // writing it in this order means it stays harmless if that changes.
         foreach (var link in Links)
         {
             values[link.Name] = link.Value(config);
+        }
+
+        // Null when there is no event yet, which a fresh database has. Every
+        // event placeholder is then left standing and the coverage check
+        // refuses the send, which is the right answer: a broadcast that names
+        // a season nobody has created is not one to guess at.
+        if (season is not null)
+        {
+            foreach (var field in Season)
+            {
+                if (field.Value(season) is { } value)
+                {
+                    values[field.Name] = value;
+                }
+            }
         }
 
         foreach (var field in All)
@@ -254,9 +330,12 @@ public static class MergeFields
     /// both want the same order twice.
     /// </remarks>
     public static IReadOnlyList<string> Unfilled(
-        IReadOnlySet<string> wanted, SegmentMember member, IConfiguration config)
+        IReadOnlySet<string> wanted,
+        SegmentMember member,
+        IConfiguration config,
+        EventDetail? season = null)
     {
-        var values = Values(member, config);
+        var values = Values(member, config, season);
 
         return wanted.Where(placeholder => !values.ContainsKey(placeholder))
                      .OrderBy(placeholder => placeholder, StringComparer.Ordinal)

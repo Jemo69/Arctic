@@ -975,6 +975,9 @@ public class CampaignTests(ApplicationsDatabase db)
         Assert.Equal(
             ["email", "firstName", "lastName", "school", "levelOfStudy",
              "graduationYear", "firstTimeHacker", "shirtSize", "country",
+             "event.name", "event.startsAt", "event.endsAt",
+             "event.registrationOpensAt", "event.registrationClosesAt",
+             "event.decisionsAnnouncedAt", "event.capacity",
              "link.portal", "link.forms", "link.console"],
             listed.Select(p => p.GetProperty("name").GetString()));
 
@@ -1007,12 +1010,19 @@ public class CampaignTests(ApplicationsDatabase db)
         // from an application is offered — but our own links do not depend on
         // who is receiving the mail, so they are.
         Assert.Equal(
-            ["email", "link.portal", "link.forms", "link.console"],
+            ["email",
+             "event.name", "event.startsAt", "event.endsAt",
+             "event.registrationOpensAt", "event.registrationClosesAt",
+             "event.decisionsAnnouncedAt", "event.capacity",
+             "link.portal", "link.forms", "link.console"],
             await PlaceholdersOn(addresses, cookie));
 
         Assert.Equal(
             ["email", "firstName", "lastName", "school", "levelOfStudy",
              "graduationYear", "firstTimeHacker", "shirtSize", "country",
+             "event.name", "event.startsAt", "event.endsAt",
+             "event.registrationOpensAt", "event.registrationClosesAt",
+             "event.decisionsAnnouncedAt", "event.capacity",
              "link.portal", "link.forms", "link.console"],
             await PlaceholdersOn(applicants, cookie));
     }

@@ -44,4 +44,48 @@ public static class EventZone
     /// <summary>The same instant, read off the clock in the event's city.</summary>
     public static DateTimeOffset Local(DateTimeOffset instant) =>
         TimeZoneInfo.ConvertTime(instant, Zone);
+
+    /// <summary>
+    /// What to call the zone at this instant: <c>EST</c> or <c>EDT</c>.
+    /// </summary>
+    /// <remarks>
+    /// The pair belongs to <see cref="Id"/> and has to change with it, which is
+    /// why it is here rather than at the call site — a second copy would be a
+    /// second thing to remember when the event moves city, and the failure is
+    /// silent because a wrong abbreviation still renders.
+    /// <para>
+    /// Derived from <see cref="TimeZoneInfo.IsDaylightSavingTime(DateTimeOffset)"/>
+    /// rather than the month, because that is the whole reason this class
+    /// exists: the 2026 deadline was written up as EST in a month that was on
+    /// EDT. On a host with no tzdata <see cref="Zone"/> is UTC and this reads
+    /// EST, which is wrong by an hour and says so — which is the point of
+    /// printing it at all.
+    /// </para>
+    /// </remarks>
+    public static string Abbreviation(DateTimeOffset instant) =>
+        Zone.IsDaylightSavingTime(instant) ? "EDT" : "EST";
+
+    /// <summary>
+    /// A date somebody can act on: "January 15, 2027 at 11:59 PM EST".
+    /// </summary>
+    /// <remarks>
+    /// The same sentence <c>libs/ui/zone.ts</c> renders on the console and the
+    /// public form, so a deadline in an email and the same deadline on a
+    /// screen can be read against each other without anybody having to
+    /// translate. If one of the two changes, both have to.
+    /// <para>
+    /// Invariant culture, because the month names are English copy rather than
+    /// a preference — a server whose locale decided to say "janvier" would be
+    /// sending a different email from the one that was approved.
+    /// </para>
+    /// <para>
+    /// The abbreviation is not decoration. Half the confusion these dates
+    /// cause is somebody in another state reading a time and assuming it is
+    /// theirs, and three characters prevent it.
+    /// </para>
+    /// </remarks>
+    public static string Readable(DateTimeOffset instant) =>
+        string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"{Local(instant):MMMM d, yyyy} at {Local(instant):h:mm tt} {Abbreviation(instant)}");
 }

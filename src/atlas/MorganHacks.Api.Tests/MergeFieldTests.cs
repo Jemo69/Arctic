@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Segments;
+using MorganHacks.Applications.Services;
 
 namespace MorganHacks.Api.Tests;
 
@@ -119,6 +120,20 @@ public class MergeFieldValueTests
     /// </remarks>
     private static readonly IConfiguration NoOrigins =
         new ConfigurationBuilder().Build();
+
+    /// <summary>An event with only the dates a test names.</summary>
+    private static EventDetail Season(
+        DateTimeOffset? startsAt = null,
+        DateTimeOffset? registrationClosesAt = null) =>
+        new(Guid.Empty, "mh2027", "MorganHacks 2027",
+            StartsAt: startsAt,
+            EndsAt: null,
+            RegistrationOpensAt: null,
+            RegistrationClosesAt: registrationClosesAt,
+            DecisionsAnnouncedAt: null,
+            Capacity: null,
+            CreatedAt: default,
+            CreatedBy: null);
 
     private static SegmentMember Member(params (string Column, object? Value)[] answers) =>
         new(null,
@@ -274,6 +289,64 @@ public class MergeFieldValueTests
         Assert.Equal("https://portal.example.test", values["link.portal"]);
         Assert.Equal("https://forms.example.test", values["link.forms"]);
         Assert.Equal("https://admin.example.test", values["link.console"]);
+    }
+
+    [Fact]
+    public void An_event_date_reads_in_the_event_zone_with_the_zone_said_out_loud()
+    {
+        // The reason these exist now and did not before. Stored as an instant,
+        // read as an evening in the event's city: 2027-01-16T04:59Z is the
+        // fifteenth at 11:59 PM Eastern, and the fifteenth is the day the team
+        // set and the day the flyer says.
+        var season = Season(registrationClosesAt:
+            new DateTimeOffset(2027, 1, 16, 4, 59, 0, TimeSpan.Zero));
+
+        var values = MergeFields.Values(
+            Member(("email", "a@example.invalid")), NoOrigins, season);
+
+        Assert.Equal(
+            "January 15, 2027 at 11:59 PM EST", values["event.registrationClosesAt"]);
+    }
+
+    [Fact]
+    public void An_event_date_in_summer_says_EDT()
+    {
+        // The failure this class was written for: the 2026 deadline was
+        // written up as EST in a month that was on EDT. July is daylight time,
+        // so the abbreviation has to move with it rather than be assumed.
+        var season = Season(startsAt:
+            new DateTimeOffset(2027, 7, 10, 16, 0, 0, TimeSpan.Zero));
+
+        var values = MergeFields.Values(
+            Member(("email", "a@example.invalid")), NoOrigins, season);
+
+        Assert.Equal("July 10, 2027 at 12:00 PM EDT", values["event.startsAt"]);
+    }
+
+    [Fact]
+    public void A_date_nobody_has_set_leaves_the_placeholder_standing()
+    {
+        // An email promising a deadline the team has not agreed is worse than
+        // one that cannot be sent, so an unset date stays out of the
+        // dictionary and the coverage check refuses the send.
+        var values = MergeFields.Values(
+            Member(("email", "a@example.invalid")), NoOrigins, Season());
+
+        Assert.False(values.ContainsKey("event.registrationClosesAt"));
+        Assert.False(values.ContainsKey("event.startsAt"));
+        Assert.Equal("MorganHacks 2027", values["event.name"]);
+    }
+
+    [Fact]
+    public void With_no_event_at_all_every_event_placeholder_stands()
+    {
+        // What a fresh database has. The links still fill, because they do not
+        // depend on a season existing.
+        var values = MergeFields.Values(
+            Member(("email", "a@example.invalid")), NoOrigins, season: null);
+
+        Assert.DoesNotContain(values.Keys, key => key.StartsWith("event.", StringComparison.Ordinal));
+        Assert.True(values.ContainsKey("link.portal"));
     }
 
     [Fact]
