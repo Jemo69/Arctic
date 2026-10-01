@@ -18,7 +18,7 @@ import styles from "./templates.module.css";
 import { useDraft, type DraftHandle } from "./use-draft";
 import { usePreview } from "./use-preview";
 import { useSave } from "./use-save";
-import type { EditorStep, Placeholder, Template } from "./types";
+import type { EditorStep, FormChoice, Placeholder, Template } from "./types";
 
 const loadDesignWorkspace = () => import("./design-workspace");
 const DesignWorkspace = dynamic(() => loadDesignWorkspace().then((module) => module.DesignWorkspace), {
@@ -48,6 +48,7 @@ export function Editor({
   template,
   canManage,
   available,
+  forms,
   defaultRecipient = "",
   personId,
 }: {
@@ -67,6 +68,15 @@ export function Editor({
    * whether a name the author typed can be called unknown.
    */
   available: Placeholder[] | null;
+
+  /**
+   * The forms this template could say it is about, or null where the list
+   * could not be read.
+   *
+   * Read on the server by the page, like `available`, so the picker has its
+   * options before anybody opens the settings tab.
+   */
+  forms: FormChoice[] | null;
 }) {
   const handle = useDraft(template, available, { id: personId, email: defaultRecipient, canManage });
   const { draft } = handle;
@@ -164,6 +174,7 @@ export function Editor({
               handle={editable}
               available={available}
               errors={saving.fieldErrors}
+              forms={forms}
             />
           </fieldset>
           <aside className={settings.aside}>

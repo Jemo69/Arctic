@@ -1,7 +1,7 @@
 import { Editor } from "@/components/templates/editor";
 import { readPageData } from "@/lib/page-data";
 import { Shell } from "../../shell";
-import { readPlaceholders } from "../api";
+import { readFormChoices, readPlaceholders } from "../api";
 
 /**
  * Writing a template that does not exist yet.
@@ -31,7 +31,12 @@ export default async function NewTemplate({
       ? query.campaign
       : null;
 
-  const { person, data: names } = await readPageData(() => readPlaceholders(campaign));
+    // Both at once. The picker's options and the placeholder menu are two
+  // independent reads and the editor needs both before it draws.
+  const [{ person, data: names }, forms] = await Promise.all([
+    readPageData(() => readPlaceholders(campaign)),
+    readFormChoices(),
+  ]);
 
   if (!person.permissions.has("email.manage_templates")) {
     return (
@@ -53,6 +58,7 @@ export default async function NewTemplate({
         defaultRecipient={person.email ?? ""}
         canManage
         available={names.ok ? names.items : null}
+        forms={forms.ok ? forms.forms : null}
       />
     </Shell>
   );

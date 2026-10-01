@@ -46,6 +46,9 @@ export type Draft = {
   format: TemplateFormat;
   fromName: string;
   replyTo: string;
+
+  /** The form this email is about, or "" for the many that are about none. */
+  formId: string;
 };
 
 export type DraftHandle = {
@@ -87,6 +90,7 @@ export function useDraft(
     format: template?.body === null ? "html" : template?.format ?? "markdown",
     fromName: template?.fromName ?? DEFAULT_FROM_NAME,
     replyTo: template?.replyTo ?? "",
+    formId: template?.formId ?? "",
   }));
   const current = useRef(draft);
   const savedFingerprint = useRef(draftFingerprint(draft));
@@ -214,6 +218,7 @@ export function useDraft(
       fromLocal: FROM_LOCAL,
       fromDomain: FROM_DOMAIN,
       replyTo: draft.replyTo.trim() === "" ? null : draft.replyTo.trim(),
+      formId: draft.formId === "" ? null : draft.formId,
     }),
     used,
     resolves,
