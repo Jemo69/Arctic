@@ -3,6 +3,7 @@ using System.Text;
 using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Segments;
 using MorganHacks.Applications.Services;
+using MorganHacks.Lark.Data.Data;
 using MorganHacks.Lark.Data.Domain;
 
 namespace MorganHacks.Api;
@@ -60,6 +61,7 @@ public static class MergeFields
         public const string Applicant = "About the person";
         public const string Event = "The event";
         public const string Links = "Links";
+        public const string Saved = "Saved values";
     }
 
     /// <summary>
@@ -174,7 +176,36 @@ public static class MergeFields
     private static string? Moment(DateTimeOffset? instant) =>
         instant is { } set ? EventZone.Readable(set) : null;
 
-    /// <summary>Every placeholder that resolves, in the order an editor lists them.</summary>
+    /// <summary>The prefix every saved value is offered under.</summary>
+    /// <remarks>
+    /// The reason a saved name may not contain a dot, enforced by the check
+    /// constraint in <c>0045</c>: with the prefix reserved and the name unable
+    /// to hold one, a saved value cannot collide with a built-in name however
+    /// either set grows.
+    /// </remarks>
+    public const string SavedPrefix = "saved.";
+
+    /// <summary>
+    /// The catalogue, plus whatever somebody has saved.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="All"/> cannot be a static list any more: saved values are
+    /// rows, so the catalogue is only complete once they have been read. Every
+    /// caller that offers names to an author or checks a name against them
+    /// goes through here; <see cref="All"/> remains what the declaration
+    /// alone knows, which is what the schema test compares.
+    /// </remarks>
+    public static IReadOnlyList<MergeField> Including(IEnumerable<SavedValue> saved) =>
+    [
+        .. All,
+        .. saved.Select(value => new MergeField(
+            SavedPrefix + value.Name,
+            Groups.Saved,
+            value.Description ?? "Saved by an organizer.",
+            OnAddressLists: true)),
+    ];
+
+    /// <summary>Every placeholder the declaration alone knows.</summary>
     public static readonly IReadOnlyList<MergeField> All =
     [
         .. ApplicantColumns.Mergeable.Select(column => new MergeField(
@@ -226,7 +257,10 @@ public static class MergeFields
     /// would reach them as "Hi {{firstName}},".
     /// </remarks>
     public static Dictionary<string, string> Values(
-        SegmentMember member, IConfiguration config, EventDetail? season = null)
+        SegmentMember member,
+        IConfiguration config,
+        EventDetail? season = null,
+        IReadOnlyList<SavedValue>? saved = null)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -237,6 +271,11 @@ public static class MergeFields
         foreach (var link in Links)
         {
             values[link.Name] = link.Value(config);
+        }
+
+        foreach (var value in saved ?? [])
+        {
+            values[SavedPrefix + value.Name] = value.Value;
         }
 
         // Null when there is no event yet, which a fresh database has. Every
@@ -309,8 +348,10 @@ public static class MergeFields
         };
 
     /// <summary>The placeholders a segment can fill for everybody in it.</summary>
-    public static IReadOnlySet<string> Fillable(Segment segment) =>
-        new HashSet<string>(For(segment).Select(field => field.Name), StringComparer.Ordinal);
+    public static IReadOnlySet<string> Fillable(
+        Segment segment, IReadOnlyList<SavedValue>? saved = null) =>
+        new HashSet<string>(
+            For(segment, saved).Select(field => field.Name), StringComparer.Ordinal);
 
     /// <summary>The fields a segment can fill, described for the editor.</summary>
     /// <remarks>
@@ -318,8 +359,15 @@ public static class MergeFields
     /// beside a note saying this segment cannot fill it is a list somebody
     /// clicks anyway.
     /// </remarks>
-    public static IEnumerable<MergeField> For(Segment segment) =>
-        segment is Segment.Addresses ? All.Where(field => field.OnAddressLists) : All;
+    public static IEnumerable<MergeField> For(
+        Segment segment, IReadOnlyList<SavedValue>? saved = null)
+    {
+        var catalogue = saved is null ? All : Including(saved);
+
+        return segment is Segment.Addresses
+            ? catalogue.Where(field => field.OnAddressLists)
+            : catalogue;
+    }
 
     /// <summary>
     /// Which of the placeholders a template asks for this recipient has
@@ -333,9 +381,10 @@ public static class MergeFields
         IReadOnlySet<string> wanted,
         SegmentMember member,
         IConfiguration config,
-        EventDetail? season = null)
+        EventDetail? season = null,
+        IReadOnlyList<SavedValue>? saved = null)
     {
-        var values = Values(member, config, season);
+        var values = Values(member, config, season, saved);
 
         return wanted.Where(placeholder => !values.ContainsKey(placeholder))
                      .OrderBy(placeholder => placeholder, StringComparer.Ordinal)

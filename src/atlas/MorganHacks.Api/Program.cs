@@ -94,6 +94,7 @@ builder.Services.AddSingleton<UnsubscribeStore>();
 builder.Services.AddSingleton<TemplateCatalog>();
 builder.Services.AddSingleton<TemplateDraftStore>();
 builder.Services.AddSingleton<TemplateVisibilityStore>();
+builder.Services.AddSingleton<SavedValueStore>();
 builder.Services.AddSingleton<TemplateTestQueue>();
 
 // The broadcast side of the same schema. Separate from MessageQueue on
@@ -381,6 +382,7 @@ app.MapTemplates();
 app.MapEmailTracking();
 app.MapEmailUnsubscribe();
 app.MapCampaigns();
+app.MapSavedValues();
 app.MapSesWebhook();
 
 // Only here. Deployed environments are Staging or Production, set explicitly on
