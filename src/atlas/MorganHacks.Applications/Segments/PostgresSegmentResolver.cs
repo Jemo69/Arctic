@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MorganHacks.Applications.Domain;
+using MorganHacks.Applications.Forms;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -312,6 +313,259 @@ public sealed class PostgresSegmentResolver(NpgsqlDataSource dataSource) : ISegm
         Criterion(cmd, segment);
 
         return (int)(long)(await cmd.ExecuteScalarAsync(ct))!;
+    }
+
+    // ------------------------------------------------------------ merging ---
+
+    /// <summary>
+    /// What these recipients answered one form, in one query.
+    /// </summary>
+    /// <remarks>
+    /// The same two-table split <see cref="AnsweredAsync"/> matches against,
+    /// read rather than filtered: an application form's answers are in
+    /// <c>applications.applications.responses</c> and every other kind's are in
+    /// <c>applications.form_submissions.answers</c>. A form has exactly one
+    /// kind, so this is one statement and not a union — which is the whole
+    /// performance story. Rendering a campaign calls this once, before the loop
+    /// over recipients, so merging an answer costs one query however many
+    /// people are in the send. The obvious version — look the answer up inside
+    /// the render loop — is four hundred round trips behind one button, and it
+    /// would be four hundred fast ones, which is how it would survive review.
+    /// <para>
+    /// Both branches key on what <see cref="SegmentMember"/> actually carries.
+    /// The application branch keys on the address, because
+    /// <c>applications.person_id</c> is null for everybody who applied without
+    /// signing in and the answers hang off the application rather than off a
+    /// person. The submission branch has to key on the person — that is the
+    /// only thing <c>form_submissions</c> holds — and the address is put back
+    /// on from the members themselves rather than by joining
+    /// <c>applications</c> a second time. One lookup, one key, and no join
+    /// whose only job is to turn an id back into something we were already
+    /// handed.
+    /// </para>
+    /// <para>
+    /// <c>submitted_at IS NOT NULL</c> on the application branch, for the
+    /// reason <see cref="RespondentsAsync"/> gives: the form autosaves, so
+    /// somebody who opened it and typed half an answer already has a row. An
+    /// email quoting a sentence they abandoned is worse than one that leaves
+    /// the blank standing for the coverage check to refuse.
+    /// </para>
+    /// <para>
+    /// Nothing is logged here and nothing is returned beyond the questions that
+    /// were asked for. The rest of the jsonb is read out of the row and
+    /// dropped — a key-by-key projection in SQL would mean a lateral join per
+    /// row to answer what a dictionary lookup answers, and what matters is that
+    /// an unoffered answer is never written anywhere, which is what the filter
+    /// guarantees.
+    /// </para>
+    /// </remarks>
+    public async Task<FormAnswers> AnswersToAsync(
+        Form form,
+        IReadOnlyList<AnswerQuestion> questions,
+        IReadOnlyList<SegmentMember> members,
+        CancellationToken ct = default)
+    {
+        // No form questions, or nobody to look them up for. Both are ordinary:
+        // an unpublished form asks nothing, and the placeholder endpoints want
+        // the question list without resolving a segment at all. Neither is a
+        // reason to open a connection.
+        if (questions.Count == 0 || members.Count == 0)
+        {
+            return FormAnswers.Asked(questions);
+        }
+
+        var wanted = new HashSet<string>(
+            questions.Select(question => question.Key), StringComparer.Ordinal);
+
+        return new FormAnswers(
+            questions,
+            form.IsApplication
+                ? await RespondedAsync(form, members, wanted, ct)
+                : await SubmittedAsync(form, members, wanted, ct));
+    }
+
+    /// <summary>
+    /// An application form's answers, which are on the application itself.
+    /// </summary>
+    /// <remarks>
+    /// Reached through the form's event rather than through a form id, because
+    /// an application carries a form version and not a form — the same
+    /// reasoning <see cref="RespondentsAsync"/> and <see cref="AnsweredAsync"/>
+    /// both give. The consequence is worth naming: a campaign aimed at last
+    /// season's applicants whose template names this season's form resolves no
+    /// answers at all, every placeholder stands, and the send is refused. That
+    /// is the right failure rather than a missing feature — those people
+    /// answered a different form.
+    /// <para>
+    /// <c>lower(email)</c> on both sides, which is what
+    /// <c>applications_event_email_key</c> is built on, so this is an index
+    /// lookup rather than a scan of the event's applicants.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, JsonElement>>>
+        RespondedAsync(
+            Form form,
+            IReadOnlyList<SegmentMember> members,
+            IReadOnlySet<string> wanted,
+            CancellationToken ct)
+    {
+        const string sql = """
+            SELECT a.email, a.responses
+              FROM applications.applications a
+             WHERE a.event_id = @eventId
+               AND a.submitted_at IS NOT NULL
+               AND lower(a.email) = ANY(@emails)
+            """;
+
+        await using var cmd = dataSource.CreateCommand(sql);
+        cmd.Parameters.AddWithValue("eventId", form.EventId);
+        cmd.Parameters.Add(new NpgsqlParameter("emails", NpgsqlDbType.Array | NpgsqlDbType.Text)
+        {
+            Value = members
+                .Select(member => member.Email.ToLowerInvariant())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray(),
+        });
+
+        var given = FormAnswers.EmptyGiven();
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            given[reader.GetString(0)] = Kept(reader.GetString(1), wanted);
+        }
+
+        return given;
+    }
+
+    /// <summary>
+    /// Every other kind of form's answers, which are in
+    /// <c>form_submissions</c>.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the person, which is the only thing that table holds, and
+    /// turned back into an address from the members themselves. Anybody with no
+    /// person id is skipped and has nothing: a typed list of addresses is
+    /// mentors and sponsors this system has never heard of, and an answer
+    /// belongs to somebody who signed in to give it.
+    /// <para>
+    /// <c>form_submissions_form_person_key</c> covers the lookup and also means
+    /// a person cannot have two rows for one form, so no row here can be
+    /// overwritten by a later one.
+    /// </para>
+    /// <para>
+    /// Anonymous answers are excluded by having no person to match, which is
+    /// the same outcome <see cref="AnsweredAsync"/> states in as many words.
+    /// They are not counted here, unlike there: an answer with nobody behind it
+    /// has no address to merge into and nothing to say about a send's coverage.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, JsonElement>>>
+        SubmittedAsync(
+            Form form,
+            IReadOnlyList<SegmentMember> members,
+            IReadOnlySet<string> wanted,
+            CancellationToken ct)
+    {
+        var addressed = new Dictionary<Guid, List<string>>();
+
+        foreach (var member in members)
+        {
+            if (member.PersonId is not { } person)
+            {
+                continue;
+            }
+
+            // A list rather than one address, because nothing forbids two. The
+            // dedupe index is on (event_id, lower(email)) and not on the
+            // person, so somebody who applied twice under two addresses is one
+            // person and two recipients -- and both of them answered the
+            // survey, because the answer is filed against the person. Keeping
+            // whichever arrived last would silently drop a message.
+            if (!addressed.TryGetValue(person, out var emails))
+            {
+                addressed[person] = emails = [];
+            }
+
+            emails.Add(member.Email);
+        }
+
+        var given = FormAnswers.EmptyGiven();
+
+        if (addressed.Count == 0)
+        {
+            return given;
+        }
+
+        const string sql = """
+            SELECT s.person_id, s.answers
+              FROM applications.form_submissions s
+             WHERE s.form_id = @formId
+               AND s.person_id = ANY(@people)
+            """;
+
+        await using var cmd = dataSource.CreateCommand(sql);
+        cmd.Parameters.AddWithValue("formId", form.Id);
+        cmd.Parameters.Add(new NpgsqlParameter("people", NpgsqlDbType.Array | NpgsqlDbType.Uuid)
+        {
+            Value = addressed.Keys.ToArray(),
+        });
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var answers = Kept(reader.GetString(1), wanted);
+
+            foreach (var email in addressed[reader.GetGuid(0)])
+            {
+                given[email] = answers;
+            }
+        }
+
+        return given;
+    }
+
+    /// <summary>
+    /// One row's answers, narrowed to the questions that were asked for.
+    /// </summary>
+    /// <remarks>
+    /// Cloned, because each element is a window onto a document this method is
+    /// about to dispose — the same reason <c>PostgresResponseStore.Read</c>
+    /// clones, and the same bug if it is forgotten: the values survive as
+    /// garbage rather than as an exception.
+    /// <para>
+    /// Anything not asked for is dropped here and never leaves this method. A
+    /// question an author added after the template was written, and a file
+    /// upload's storage id, are both in this jsonb and neither is something a
+    /// message may carry.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyDictionary<string, JsonElement> Kept(
+        string json, IReadOnlySet<string> wanted)
+    {
+        var kept = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+
+        using var document = JsonDocument.Parse(json);
+
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            // NOT NULL DEFAULT '{}' on both columns, so this is unreachable
+            // unless something wrote an array or a scalar into one. Answered
+            // with nothing rather than a throw: the caller is halfway through
+            // preparing a send, and one unreadable row is a standing
+            // placeholder and a refusal rather than a 500.
+            return kept;
+        }
+
+        foreach (var property in document.RootElement.EnumerateObject())
+        {
+            if (wanted.Contains(property.Name))
+            {
+                kept[property.Name] = property.Value.Clone();
+            }
+        }
+
+        return kept;
     }
 
     /// <summary>

@@ -1,3 +1,5 @@
+using MorganHacks.Applications.Forms;
+
 namespace MorganHacks.Applications.Segments;
 
 /// <summary>
@@ -106,4 +108,37 @@ public interface ISegmentResolver
     /// </para>
     /// </remarks>
     Task<SegmentMember?> MemberOfAsync(Guid applicationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// What these recipients answered one form, for a message that quotes them
+    /// back to themselves.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in a reader of its own because the thing it needs to
+    /// know is already this interface's: an <em>application</em> form's answers
+    /// are in <c>applications.applications.responses</c> and every other kind's
+    /// are in <c>applications.form_submissions.answers</c>. A second class that
+    /// also knew that would be a second place to get it wrong, and the way it
+    /// would go wrong is a survey resolving against the application table and
+    /// quietly filling nothing in for everybody.
+    /// <para>
+    /// <b>One query for the whole send, not one per recipient.</b> A campaign
+    /// is several hundred people and this is called once before rendering
+    /// starts, so the cost of merging an answer does not grow with the size of
+    /// the audience. Per-recipient would be four hundred round trips behind one
+    /// button.
+    /// </para>
+    /// <para>
+    /// <paramref name="questions"/> is what the editor was offered, and nothing
+    /// outside it is read out of the table. That is the same rule the select
+    /// list follows for withheld columns: a value that is never read cannot
+    /// reach a rendered body by accident, and a form's questions are an
+    /// author's to add at any time.
+    /// </para>
+    /// </remarks>
+    Task<FormAnswers> AnswersToAsync(
+        Form form,
+        IReadOnlyList<AnswerQuestion> questions,
+        IReadOnlyList<SegmentMember> members,
+        CancellationToken ct = default);
 }
