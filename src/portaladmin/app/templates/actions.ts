@@ -7,7 +7,7 @@ import type {
   TemplateFormat,
   TemplateRow,
 } from "@/components/templates/types";
-import { createTemplate, discardSettingsDraft, fetchTemplateHtml, queueTemplateTest, removeTemplate, renderPreview, saveSettingsDraft, saveTemplateVisibility, updateTemplate } from "./api";
+import { createTemplate, discardSettingsDraft, fetchTemplateHtml, queueTemplateTest, readSavedValues, removeSavedValue, removeTemplate, renderPreview, saveSettingsDraft, saveTemplateVisibility, updateTemplate, writeSavedValue } from "./api";
 import { validateDesign, validateSettings, type TemplateFieldErrors } from "@/components/templates/validation";
 
 /**
@@ -207,4 +207,75 @@ export async function previewBody(input: {
   previewText?: string;
 }): Promise<PreviewResult> {
   return renderPreview(input);
+}
+
+// ----------------------------------------------------------- saved values ---
+
+/**
+ * What a name may be, checked here for the sentence.
+ *
+ * The constraint in 0045 is the one that holds and the API checks it again;
+ * this is so somebody typing into the form is told before a round trip. Three
+ * spellings of one rule, and the database's is the one that decides.
+ */
+const SAVED_NAME = /^[a-z][a-zA-Z0-9]{0,39}$/;
+
+export async function saveSavedValue(
+  name: string,
+  value: string,
+  description: string,
+) {
+  if (typeof name !== "string" || !SAVED_NAME.test(name)) {
+    return {
+      ok: false as const,
+      error:
+        "A name starts with a lower-case letter and holds only letters and "
+        + "numbers. No dots: those separate a group from a name.",
+    };
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0 || value.length > 2000) {
+    return { ok: false as const, error: "A value is between 1 and 2000 characters." };
+  }
+
+  if (typeof description !== "string" || description.length > 200) {
+    return { ok: false as const, error: "A description is at most 200 characters." };
+  }
+
+  const result = await writeSavedValue(
+    name,
+    value.trim(),
+    description.trim() === "" ? null : description.trim(),
+  );
+
+  if (result.ok) {
+    // Every template screen offers these in its placeholder menu, so all of
+    // them are now showing a stale list.
+    revalidatePath("/templates", "layout");
+    revalidatePath("/mail", "layout");
+  }
+
+  return result;
+}
+
+export async function deleteSavedValue(name: string) {
+  if (typeof name !== "string" || !SAVED_NAME.test(name)) {
+    return { ok: false as const, error: "No saved value by that name." };
+  }
+
+  const result = await removeSavedValue(name);
+
+  if (result.ok) {
+    revalidatePath("/templates", "layout");
+    revalidatePath("/mail", "layout");
+  }
+
+  return result;
+}
+
+export async function loadSavedValues() {
+  const read = await readSavedValues();
+  return read.ok
+    ? { ok: true as const, values: read.values }
+    : { ok: false as const, error: read.error };
 }
