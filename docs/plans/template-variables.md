@@ -1,6 +1,12 @@
 # Template variables, and mailing people by what they answered
 
-**Status: plan, nothing built.** Written 2026-09-30 against `60394fb`.
+**Status: built.** Written 2026-09-30 against `60394fb`, brought up to date
+2026-10-01.
+
+Everything below shipped, across #140, #142, #143, #146, #147, #148, #153,
+#154 and #156. The plan is kept rather than deleted because the reasoning in it
+is the reasoning in the code, and three things turned out differently once they
+met the schema — each marked **changed in the build** where it happens.
 
 Two features that were one idea until they were pulled apart:
 
@@ -152,7 +158,12 @@ ALTER TABLE notify.templates ADD COLUMN form_id uuid REFERENCES applications.for
 ```
 
 Fields: `{{form.link}}` (built from `FORMS_BASE_URL` + the form's code),
-`{{form.name}}`, `{{form.closesAt}}`, `{{form.opensAt}}`.
+`{{form.name}}`, `{{form.closesAt}}`.
+
+> **Changed in the build.** There is no `{{form.opensAt}}`.
+> `applications.forms` has no such column — a form is reachable from the moment
+> it is published, and closing is the only date it carries. The plan invented a
+> field by symmetry with the event's dates.
 
 The editor gets one picker — "which form is this email about?" — and the `form.`
 group only appears in the placeholder menu once a form is chosen. A template
@@ -360,13 +371,44 @@ editor show more than a flat list of nine.
 
 ---
 
-## Open decisions
+## What the build changed
 
-- **Custom variables: global or per-event?** Global is simpler; per-event stops
-  last season's value changing underneath an old template.
-- **Question list for answer segments**: current published version only, or
-  every question that ever existed?
-- **`rsvp_deadline`**: now that `EventZone` exists, does it move from withheld
-  to mergeable?
-- **Free-text matching**: left out above. Confirm that is right, or it becomes
-  a search feature rather than a segment.
+Three things, beyond the `form.opensAt` note above.
+
+**The naming.** `system.` became `link.` and `custom.` became `saved.`, because
+the first pair are words from the maintainer's side of the screen and an
+organizer writing an email is looking for a link to the portal. `{{form.url}}`
+became `{{form.link}}` for the same reason. The sentence above about "an
+earlier draft" is that change, recorded where it happened.
+
+**Form answers came back.** The plan proposed an `answer.` namespace, it was
+dropped in favour of answer-*segments*, and then the questions were wanted as
+placeholders after all. They are `{{form.answer.<key>}}` — three segments, not
+`{{form.<key>}}`, because a question keyed `link` or `name` would otherwise
+collide with the form's own fields. Shipped **without** the per-question
+opt-in the plan argued for, which was a deliberate call: a rendered answer is
+frozen into `notify.messages`, a schema with different readers and retention
+than `applications.*`, and that trade is recorded in `FormAnswers`' remarks.
+
+**One form per template, not several.** The plan's slot design
+(`{{form.apply.link}}` against `{{form.feedback.link}}`) asked an author to
+invent a name before they could write a sentence. One form means one nullable
+column and no grammar to learn.
+
+## Decisions that were open, and how they went
+
+- **Saved values: global or per-event?** → **Global.** One event a year, and
+  per-event would have meant a composite key for a problem nobody has yet. The
+  risk it leaves is real and unaddressed: updating `{{saved.discordInvite}}`
+  changes what last season's templates say.
+- **Question list for answer segments** → **the published version's**, with the
+  version number on screen. Somebody who answered a question that has since
+  been removed is therefore not reachable by it.
+- **Free-text matching** → **excluded.** Substring search over a paragraph is a
+  search feature wearing a segment's clothes, and it cannot use the GIN index
+  the way equality can.
+- **`rsvp_deadline`** → **still withheld, and still worth revisiting.** It was
+  kept out of the applicant catalogue because nothing knew the event's
+  timezone. `EventZone` exists now and `{{event.*}}` dates render through it,
+  so the reason is gone and nobody has acted on it. The only item on this list
+  that is still a question.
