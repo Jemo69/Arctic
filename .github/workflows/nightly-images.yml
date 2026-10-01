@@ -1,0 +1,97 @@
+# Rebuilds the three service images and scans them, on a schedule.
+#
+# Nothing here is about the code. The images are rebuilt from the same
+# Dockerfiles against the same base, and the only thing that changes between
+# one run and the next is what the distribution has published — which is
+# exactly what this is watching for.
+#
+# WHY IT EXISTS. On 2026-09-30 a newly published OpenSSL advisory
+# (CVE-2026-84782) failed the Trivy step on a pull request that changed a
+# regex. The check was right and the finding was real; the problem was who it
+# landed on. Every backend branch was red, for a reason none of them had
+# caused, and the person who happened to open the next PR had to work out that
+# their change was fine.
+#
+# A newly published CVE is not a property of anybody's branch. Finding it here
+# means a scheduled job goes red, with nothing waiting behind it, and whoever
+# picks it up is looking at it on purpose.
+#
+# It does NOT run tests. Those belong on a pull request, where somebody is
+# waiting for the answer; repeating them nightly would turn a red cross that
+# means "the base image moved" into one that could mean anything.
+name: Nightly image scan
+
+on:
+  schedule:
+    # 07:00 UTC, which is the small hours in the event's timezone. Nobody is
+    # waiting on this, and a scan that finishes before the morning means the
+    # answer is already there when somebody opens a branch.
+    - cron: "0 7 * * *"
+
+  # So it can be run against a branch when somebody is changing a Dockerfile
+  # and wants the answer now rather than tomorrow.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      # Every service every night, not just up to the first failure. One base
+      # image is shared by all three, so a finding in one is almost always a
+      # finding in all three — and "almost always" is the part worth seeing
+      # rather than assuming.
+      fail-fast: false
+      matrix:
+        service: [atlas, harbor, lark]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Context is the repository root, not the service directory, matching
+      # build-dotnet.yml. Services reference libs/observability, and atlas also
+      # references lark's data library, so a context scoped to one service
+      # cannot see what it needs.
+      - name: Build image
+        run: |
+          docker build \
+            -f src/${{ matrix.service }}/Dockerfile \
+            -t ${{ matrix.service }}:nightly \
+            .
+
+      # Same severities and the same exit code as the pull-request scan, so
+      # this cannot disagree with it about what counts. A nightly that was
+      # quieter than CI would be a nightly nobody could rely on.
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.service }}:nightly
+          exit-code: "1"
+          severity: "HIGH,CRITICAL"
+
+      - name: What this means if it failed
+        if: failure()
+        run: |
+          {
+            echo "### ${{ matrix.service }} — the base image has a new finding"
+            echo
+            echo "Nothing in this repository changed. The distribution published"
+            echo "an advisory for something inside the image."
+            echo
+            echo "The runtime stages already take \`apt-get upgrade\`, so the"
+            echo "usual fix is that the patched package is not published yet."
+            echo "Check whether one exists before changing anything:"
+            echo
+            echo '```'
+            echo "docker run --rm ${{ matrix.service }}:nightly \\"
+            echo "  apt-get -s upgrade <package>"
+            echo '```'
+            echo
+            echo "If there is no fix yet, the finding is real and unfixable"
+            echo "today — which is worth knowing, and is not a reason to"
+            echo "silence the check."
+          } >> "$GITHUB_STEP_SUMMARY"
