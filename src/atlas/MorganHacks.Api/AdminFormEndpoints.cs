@@ -1,4 +1,5 @@
 using MorganHacks.Applications.Forms;
+using MorganHacks.Applications.Segments;
 using MorganHacks.Applications.Services;
 using MorganHacks.Identity.Domain;
 using MorganHacks.Observability;
@@ -32,6 +33,14 @@ public static class AdminFormEndpoints
         forms.MapGet("/{id:guid}/draft", GetDraft)
              .RequirePermission(Permission.ApplicationsView);
         forms.MapGet("/{id:guid}/versions", GetHistory)
+             .RequirePermission(Permission.ApplicationsView);
+
+        // The questions an audience can be chosen by, for the campaign
+        // screen's form → question → value picker. Behind applications.view
+        // with the rest of the reading, and deliberately not behind
+        // applications.view_responses: it carries the questions and the
+        // options the form declares, and nobody's answer to any of them.
+        forms.MapGet("/{id:guid}/questions", AnswerableQuestions)
              .RequirePermission(Permission.ApplicationsView);
 
         forms.MapPost("", CreateForm)
@@ -205,6 +214,58 @@ public static class AdminFormEndpoints
             // benefit.
             statuses = EligibleStatuses.All,
             responseCount = await forms.ResponseCountAsync(form, ct),
+        });
+    }
+
+    /// <summary>
+    /// The published questions, and which of them an audience can be chosen
+    /// by. Requires <c>applications.view</c>.
+    /// </summary>
+    /// <remarks>
+    /// One step of the campaign screen's picker: a form, then one of its
+    /// questions, then one of that question's values. It answers the middle
+    /// step and supplies the third, because a choice question's options are
+    /// the values worth offering and they are part of the form rather than
+    /// part of anybody's answer — which is the whole reason this is readable
+    /// by comms. See <see cref="AnswerQuestions"/>, which draws that line and
+    /// says why.
+    /// <para>
+    /// The published version, named in the response rather than left implied.
+    /// A question that has since been removed still has answers in older
+    /// submissions, and the people who gave them are excluded by the question
+    /// not being offered — so the version number has to be on the screen for
+    /// that to be a visible limitation rather than a silent one.
+    /// </para>
+    /// <para>
+    /// An unpublished form answers with no questions rather than 404. It is a
+    /// real form that is not being answered by anybody yet, and the two are
+    /// different things for the picker to say.
+    /// </para>
+    /// <para>
+    /// Nothing here is logged, like the rest of this file: a question's label
+    /// is what several hundred people were asked, and an option's value is
+    /// half of an answer.
+    /// </para>
+    /// </remarks>
+    private static async Task<IResult> AnswerableQuestions(
+        Guid id, IFormStore forms, CancellationToken ct)
+    {
+        var form = await Find(forms, id, ct);
+        if (form is null)
+        {
+            return Results.NotFound(new { error = "No such form." });
+        }
+
+        var published = await forms.PublishedAsync(id, ct);
+        IReadOnlyList<AnswerQuestion> questions = published is null
+            ? []
+            : AnswerQuestions.On(form.IsApplication, published.Fields);
+
+        return Results.Ok(new
+        {
+            form = Describe(form),
+            version = published?.Version,
+            questions,
         });
     }
 

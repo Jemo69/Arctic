@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight02Icon, CheckmarkCircle02Icon, Mail01Icon, RefreshIcon, Task01Icon, Tick02Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { ArrowRight02Icon, CheckmarkCircle02Icon, HelpCircleIcon, Mail01Icon, RefreshIcon, Task01Icon, Tick02Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
 import { Select } from "@/components/ui/select";
 import { PersonalizedField } from "@/components/templates/personalized-field";
 import type { Placeholder } from "@/components/templates/types";
 import type { PreviewResult, SendResult } from "@/app/mail/actions";
 import { StatusPill } from "./status";
-import { APPLICANT_STATUSES, describeSegment, type Campaign, type CampaignAnalytics, type CampaignSaveResult, type CampaignUpdate, type EventChoice, type FormChoice, type Preview, type Render, type Segment } from "./types";
+import { APPLICANT_STATUSES, describeSegment, type Campaign, type CampaignAnalytics, type CampaignSaveResult, type CampaignUpdate, type EventChoice, type FormChoice, type FormQuestion, type FormQuestionsRead, type Preview, type Render, type Segment } from "./types";
 import styles from "./campaign-draft.module.css";
 
 const steps = ["Settings", "Design", "Recipients", "Review and send"];
@@ -84,7 +84,7 @@ function EmailPreview({ html, subject, sender, to, text, samples, selected = 0, 
   );
 }
 
-export function CampaignDraft({ campaign: initialCampaign, content, available, forms, events, audienceError, me, canSend, save, preview, send }: {
+export function CampaignDraft({ campaign: initialCampaign, content, available, forms, events, audienceError, me, canSend, save, preview, send, loadQuestions }: {
   campaign: Campaign;
   content: Content;
   available: Placeholder[] | null;
@@ -96,6 +96,16 @@ export function CampaignDraft({ campaign: initialCampaign, content, available, f
   save: (draft: CampaignUpdate) => Promise<CampaignSaveResult>;
   preview: () => Promise<PreviewResult>;
   send: (seen: number, revision?: number) => Promise<SendResult>;
+
+  /**
+   * One form's questions, fetched when the answer picker needs them.
+   *
+   * Not a prop with every form's questions already in it: which form the
+   * picker is looking at changes while somebody is on this screen, and loading
+   * all of them up front would be a read per form to fill a dropdown nobody
+   * may open.
+   */
+  loadQuestions: (formId: string) => Promise<FormQuestionsRead>;
 }) {
   const router = useRouter();
   const [campaign, setCampaign] = useState(initialCampaign);
@@ -115,10 +125,20 @@ export function CampaignDraft({ campaign: initialCampaign, content, available, f
   const audienceForm = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
+  const [questions, setQuestions] = useState<FormQuestionsRead | null>(null);
   const changed = saved !== JSON.stringify(draft);
   const ownDraft = campaign.createdBy === me || campaign.updatedBy === me;
-  const selectedFormId = draft.segment?.type === "formRespondents" ? draft.segment.formId : null;
+  const selectedFormId = draft.segment?.type === "formRespondents" || draft.segment?.type === "formAnswer"
+    ? draft.segment.formId : null;
   const formName = forms.find(form => form.id === selectedFormId)?.name;
+
+  // Narrowed once and held, because the three steps of the picker all read it
+  // and narrowing it again inside a callback does not survive the closure.
+  const answer = draft.segment?.type === "formAnswer" ? draft.segment : null;
+  const answerQuestions = questions?.ok ? questions.questions : [];
+  const chosenQuestion: FormQuestion | null = answer
+    ? answerQuestions.find(question => question.key === answer.question) ?? null
+    : null;
   const audience = draft.segment ? describeSegment(draft.segment, formName ?? null) : "Not selected yet";
   const problems = resolved?.problems ?? [];
   const missing = resolved?.placeholderCoverage?.filter(item => item.missing > 0) ?? [];
@@ -144,6 +164,19 @@ export function CampaignDraft({ campaign: initialCampaign, content, available, f
     heading.current?.focus({ preventScroll: true });
   }, [step]);
 
+  // Cleared before the fetch rather than left showing the previous form's
+  // questions, which would offer a question key that belongs to another form —
+  // and a criterion naming a question the chosen form does not have resolves
+  // to nobody with nothing on screen saying why.
+  const answerFormId = answer?.formId ?? null;
+  useEffect(() => {
+    setQuestions(null);
+    if (!answerFormId) return;
+    let current = true;
+    loadQuestions(answerFormId).then(read => { if (current) setQuestions(read); });
+    return () => { current = false; };
+  }, [answerFormId, loadQuestions]);
+
   function set<K extends keyof CampaignUpdate>(key: K, value: CampaignUpdate[K]) {
     setDraft(previous => ({ ...previous, [key]: value }));
     setConfirming(false);
@@ -162,6 +195,14 @@ export function CampaignDraft({ campaign: initialCampaign, content, available, f
     }
     if (step === 2 && draft.segment?.type === "applicationStatus" && draft.segment.statuses.length === 0) {
       setError("Choose at least one application status.");
+      return false;
+    }
+    // The dropdown disables these, so reaching here means the criterion was
+    // already on the campaign — a question that has changed type, or one
+    // chosen before it was promoted to a column of its own. It resolves to
+    // nobody either way, and the API's sentence says which.
+    if (step === 2 && chosenQuestion?.unmatchable) {
+      setError(chosenQuestion.unmatchable);
       return false;
     }
     return step === 0 ? (settingsForm.current?.reportValidity() ?? true)
@@ -250,7 +291,11 @@ export function CampaignDraft({ campaign: initialCampaign, content, available, f
     set("segment", type === "applicationStatus"
       ? { type, eventId: events[0]?.id ?? "", statuses: ["accepted"] }
       : type === "formRespondents" ? { type, formId: forms[0]?.id ?? "" }
-        : { type, emails: [] });
+        // Blank, not a guessed first question: the form's questions have not
+        // been read yet, and a criterion nobody chose is one somebody could
+        // send on.
+        : type === "formAnswer" ? { type, formId: forms[0]?.id ?? "", question: "", value: "" }
+          : { type, emails: [] });
   }
 
   const sectionTitle = ["Campaign settings", "Preview your design", "Choose your recipients", "Review your campaign"][step];
@@ -344,6 +389,7 @@ export function CampaignDraft({ campaign: initialCampaign, content, available, f
                 {([
                   { value: "applicationStatus", label: "Applicants", description: "Choose by application status", icon: UserGroupIcon },
                   { value: "formRespondents", label: "Form respondents", description: "People who completed a form", icon: Task01Icon },
+                  { value: "formAnswer", label: "Form answers", description: "People who gave a particular answer", icon: HelpCircleIcon },
                   { value: "explicitList", label: "Email list", description: "Add specific email addresses", icon: Mail01Icon },
                 ] as const).map(option => <label key={option.value}>
                   <input type="radio" name="audience-type" value={option.value} checked={draft.segment?.type === option.value} onChange={() => chooseAudience(option.value)} />
@@ -360,6 +406,44 @@ export function CampaignDraft({ campaign: initialCampaign, content, available, f
                 <fieldset className={styles.statusChoices}><legend>Application status</legend>{APPLICANT_STATUSES.map(status => <label key={status.value}><input type="checkbox" checked={draft.segment?.type === "applicationStatus" && draft.segment.statuses.includes(status.value)} onChange={event => { const segment = draft.segment; if (segment?.type === "applicationStatus") set("segment", { ...segment, statuses: event.target.checked ? [...segment.statuses, status.value] : segment.statuses.filter(value => value !== status.value) }); }} /><span>{status.label}</span></label>)}</fieldset>
               </> : null}
               {draft.segment?.type === "formRespondents" ? <div className={styles.field}><label htmlFor="campaign-form">Form</label><Select id="campaign-form" required value={draft.segment.formId} onChange={event => set("segment", { type: "formRespondents", formId: event.target.value })}><option value="" disabled>Choose a form</option>{forms.map(form => <option key={form.id} value={form.id}>{form.name}</option>)}</Select></div> : null}
+
+              {/* Form, then question, then answer. Each step narrows the next
+                  and clears what came after it, because a question key only
+                  means something on the form it came from and an answer only
+                  means something on its question. */}
+              {answer ? <>
+                <div className={styles.field}>
+                  <label htmlFor="campaign-answer-form">Form</label>
+                  <Select id="campaign-answer-form" required value={answer.formId} onChange={event => set("segment", { type: "formAnswer", formId: event.target.value, question: "", value: "" })}>
+                    <option value="" disabled>Choose a form</option>
+                    {forms.map(form => <option key={form.id} value={form.id}>{form.name}</option>)}
+                  </Select>
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="campaign-answer-question">Question</label>
+                  <Select id="campaign-answer-question" required disabled={!answerQuestions.length} value={answer.question} onChange={event => set("segment", { ...answer, question: event.target.value, value: "" })}>
+                    <option value="" disabled>{questions === null ? "Loading questions…" : answerQuestions.length ? "Choose a question" : "No questions to choose from"}</option>
+                    {/* Listed even when they cannot be matched, with the reason
+                        shown once one is selected. A question quietly missing
+                        from this list reads as a question that was deleted. */}
+                    {answerQuestions.map(question => <option key={question.key} value={question.key} disabled={Boolean(question.unmatchable)}>{question.label}</option>)}
+                  </Select>
+                  {questions && !questions.ok ? <p className={styles.error}>{questions.error}</p> : null}
+                  {questions?.ok && questions.version === null ? <p className={styles.hint}>This form has never been published, so there is nothing to have answered yet.</p> : null}
+                  {questions?.ok && questions.version !== null ? <p className={styles.hint}>Version {questions.version}, which is the one being answered now. A question removed since then is not offered, so anybody who answered it is not included.</p> : null}
+                  {chosenQuestion?.unmatchable ? <p className={styles.error}>{chosenQuestion.unmatchable}</p> : null}
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="campaign-answer-value">Answer</label>
+                  {chosenQuestion && chosenQuestion.values.length
+                    ? <Select id="campaign-answer-value" required value={answer.value} onChange={event => set("segment", { ...answer, value: event.target.value })}>
+                        <option value="" disabled>Choose an answer</option>
+                        {chosenQuestion.values.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </Select>
+                    : <input id="campaign-answer-value" required maxLength={500} value={answer.value} onChange={event => set("segment", { ...answer, value: event.target.value })} placeholder="The answer to match" spellCheck={false} />}
+                  <p className={styles.hint}>Matched exactly, ignoring capitals. Nothing about the answer goes into the email — it only decides who receives it.</p>
+                </div>
+              </> : null}
               {draft.segment?.type === "explicitList" ? <div className={styles.field}><label htmlFor="campaign-addresses">Email addresses</label><textarea id="campaign-addresses" required rows={7} value={draft.segment.emails.join("\n")} onChange={event => set("segment", { type: "explicitList", emails: event.target.value.split(/[\n,;]/) })} placeholder={"name@example.com\nanother@example.com"} spellCheck={false} /><p className={styles.hint}>One per line, or separated by commas. Duplicate addresses are counted once.</p></div> : null}
               <button type="submit" style={{ display: "none" }} tabIndex={-1} aria-hidden="true">Refresh recipients</button>
             </fieldset>
@@ -386,6 +470,11 @@ export function CampaignDraft({ campaign: initialCampaign, content, available, f
                 <p className={styles.recipientCount}>{resolved.sample.length} of {resolved.recipientCount.toLocaleString()} recipients shown</p>
               </> : <div className={styles.recipientEmpty}><Icon icon={UserGroupIcon} size={26} /><h3>No recipients yet</h3><p>No one matches this audience. Try a different form or application status.</p></div>}
               {Object.entries(resolved.suppressedByReason ?? {}).map(([reason, count]) => <p key={reason} className={styles.hint}>{count} suppressed: {reason}</p>)}
+              {/* Said out loud, because the form screen counts answers and
+                  this one counts people. An organizer who reads forty on one
+                  and thirty-one here, with nothing in between, has been shown
+                  a bug that is not there. */}
+              {resolved.unreachableCount ? <p className={styles.hint}>{resolved.unreachableCount.toLocaleString()} matching {resolved.unreachableCount === 1 ? "answer has" : "answers have"} nobody to mail — answered anonymously, or by somebody with no application on this event.</p> : null}
               {problems.map(problem => <p key={problem} className={styles.error}>{problem}</p>)}
             </> : <p className={styles.empty}>Choose an audience, then refresh to preview your recipients.</p>}
           </section>

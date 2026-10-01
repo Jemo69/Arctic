@@ -1,0 +1,41 @@
+-- Survey answers become filterable, which 0019 said they would not be.
+--
+-- 0019 created applications.form_submissions and wrote, against the `answers`
+-- column: "Nothing is promoted to a column here: a survey answer is not
+-- filtered, exported at check-in or read on a badge". That was true when it was
+-- written. It is the sentence this migration contradicts, and the contradiction
+-- is the decision rather than an oversight, so it is worth saying plainly:
+--
+--   An organizer now wants to mail everybody who gave a particular answer.
+--   "Everyone who said they want a hardware track, to ask them about it" is a
+--   survey answer being filtered.
+--
+-- Nothing is promoted to a column, so the rest of 0019's paragraph still holds
+-- and the schema still refuses a column per question per survey per year. What
+-- changes is that the jsonb is now read with a WHERE clause on it rather than
+-- only read whole, and a jsonb column that gets a WHERE clause wants an index.
+--
+-- The other half of this feature needed no migration, which is the clearest
+-- evidence this one is the right shape: applications.applications.responses has
+-- had applications_responses_gin since 0004, created with the comment "So
+-- answers living in `responses` stay filterable without promoting them". The
+-- application side was designed for exactly this query and the survey side was
+-- designed against it. This is the survey side catching up.
+--
+-- ---------------------------------------------------------------- the index ---
+--
+-- jsonb_ops rather than jsonb_path_ops, because the segment asks two different
+-- questions of the same column: `answers @> '{"track":"hardware"}'` for an
+-- equality match, and `answers ? 'track'` for "was this question answered at
+-- all", which is what the question picker counts with. jsonb_path_ops indexes
+-- only whole paths and cannot answer the second.
+--
+-- Worth being honest about what this buys today. A form has hundreds of
+-- submissions, not millions, and the segment already narrows by form_id, which
+-- form_submissions_form_idx covers -- so on this year's data a sequential
+-- recheck of one form's rows would also be fast. The index is here because the
+-- containment predicate is the one part of that query whose cost grows with
+-- how much people wrote rather than with how many people answered, and because
+-- an index created now is created on a small table.
+CREATE INDEX form_submissions_answers_gin
+    ON applications.form_submissions USING gin (answers);

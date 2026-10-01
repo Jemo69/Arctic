@@ -35,10 +35,20 @@ export type CampaignRow = {
   templateKey?: string | null;
   trackingEnabled?: boolean;
   audience?: {
-    type: "applicationStatus" | "formRespondents" | "explicitList";
+    type: "applicationStatus" | "formRespondents" | "formAnswer" | "explicitList";
     sourceId: string | null;
     statuses: string[] | null;
     count: number | null;
+
+    /**
+     * The question and the answer an answer segment was built on.
+     *
+     * Read off the stored criterion rather than resolved against the form, so
+     * the row still says who a sent campaign was aimed at after the question
+     * has been reworded or the form taken down.
+     */
+    question?: string | null;
+    answer?: string | null;
   } | null;
   summary?: {
     sentEmails: number;
@@ -69,10 +79,16 @@ export type CampaignListPage = {
 /**
  * Who a campaign goes to.
  *
- * Three shapes and no more. Comms needs "everybody we accepted", "everybody
- * who filled in the mentor form" and "these nine addresses" — a query builder
- * would be a fourth thing to get wrong on the one screen where being wrong
- * means several hundred people got an email meant for nine.
+ * Four shapes and no more. Comms needs "everybody we accepted", "everybody who
+ * filled in the mentor form", "everybody who said they want a hardware track"
+ * and "these nine addresses" — a query builder would be a fifth thing to get
+ * wrong on the one screen where being wrong means several hundred people got an
+ * email meant for nine.
+ *
+ * `formAnswer` carries one question and one value and has no operator to
+ * choose, which is what keeps it a sentence rather than the beginning of one.
+ * The answer only decides who receives the email: nothing about it is copied
+ * into the message, and there is no placeholder for it.
  *
  * Stored on the campaign rather than resolved and forgotten, which is what
  * makes "who exactly did we email" answerable a month later.
@@ -83,6 +99,7 @@ export type EventChoice = { id: string; name: string };
 export type Segment =
   | { type: "applicationStatus"; eventId: string; statuses: string[] }
   | { type: "formRespondents"; formId: string }
+  | { type: "formAnswer"; formId: string; question: string; value: string }
   | { type: "explicitList"; emails: string[] };
 
 /**
@@ -266,6 +283,18 @@ export type Preview = {
   suppressedCount?: number;
 
   /**
+   * Matching answers there is nobody to mail about.
+   *
+   * Only ever non-zero for an answer segment, and the reason it is on the
+   * screen at all: the form screen counts answers and this one counts people,
+   * so "forty responses" and "thirty-one recipients" with nothing in between
+   * reads as a bug. Anonymous answers have no person and no address —
+   * deliberately, so they could be kept at all — and an answer from somebody
+   * who never applied has no application to reach them through.
+   */
+  unreachableCount?: number;
+
+  /**
    * Why the suppressed ones were suppressed, counted by reason.
    *
    * The keys are the API's own words for a suppression and are shown as it
@@ -307,6 +336,42 @@ export type Preview = {
 
 /** A form somebody could have answered, for the segment picker. */
 export type FormChoice = { id: string; name: string };
+
+/**
+ * One question on a form, as the answer picker needs it.
+ *
+ * `unmatchable` is the API's own sentence about why an audience cannot be
+ * chosen by this question's answer, and null when it can. The question is
+ * listed either way: somebody hunting for the hardware-track question has to
+ * be told that the one they are looking at is the wrong kind, because a list
+ * that quietly dropped it reads as the question having been deleted.
+ *
+ * `values` is what the form declared, never a scan of what people answered —
+ * reading several hundred answers is `applications.view_responses`, which the
+ * team that builds segments deliberately does not hold. Empty for a typed
+ * question, where the organizer types the value instead.
+ */
+export type FormQuestion = {
+  key: string;
+  label: string;
+
+  /** The question type, as the API spells it: `radio`, `shortText`, … */
+  type: string;
+  values: { value: string; label: string }[];
+  unmatchable: string | null;
+};
+
+/**
+ * A form's questions, and which version they are.
+ *
+ * The version is shown rather than implied. These are the questions being
+ * answered now, so a question removed in a later version is not offered — and
+ * the people who answered it before it went are excluded by that. Saying which
+ * version this is makes that a visible limitation instead of a silent one.
+ */
+export type FormQuestionsRead =
+  | { ok: true; version: number | null; questions: FormQuestion[] }
+  | { ok: false; error: string };
 
 /**
  * The application statuses, exactly as the database constrains them.
@@ -355,6 +420,13 @@ export function describeSegment(
 
   if (segment.type === "formRespondents") {
     return `Form respondents · ${formName ?? segment.formId}`;
+  }
+
+  // The question's key rather than its label, because the label is only known
+  // while the question still exists and the key is what was stored. Read as a
+  // sentence it is still the right sentence a year later.
+  if (segment.type === "formAnswer") {
+    return `Answered ${segment.question} = ${segment.value} · ${formName ?? segment.formId}`;
   }
 
   return `Address list · ${segment.emails.length}`;
