@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api";
 import type {
+  FormChoice,
   Placeholder,
   Rendered,
   Template,
@@ -333,10 +334,22 @@ export async function renderPreview(input: {
  */
 export async function readPlaceholders(
   campaignId?: string | null,
+  templateKey?: string | null,
 ): Promise<PlaceholderRead> {
+  // The campaign's own list where there is a campaign, because it also narrows
+  // by what its segment can fill. Otherwise the template's, named so the API
+  // can decide whether to offer the form group — it only does when that
+  // template actually names a form.
+  //
+  // The key is the saved template rather than the draft, so picking a form and
+  // not saving leaves the group out until the autosave lands. Offering it from
+  // the draft would mean the menu disagreeing with what a send can fill, which
+  // is the one thing this list exists to prevent.
   const path = campaignId
     ? `/admin/campaigns/${encodeURIComponent(campaignId)}/placeholders`
-    : "/admin/templates/placeholders";
+    : templateKey
+      ? `/admin/templates/placeholders?template=${encodeURIComponent(templateKey)}`
+      : "/admin/templates/placeholders";
 
   let response: Response;
   try {
@@ -537,4 +550,75 @@ function savedValues(body: { [key: string]: unknown } | null): SavedValue[] {
   }
 
   return values;
+}
+
+// --------------------------------------------------- forms, for the picker ---
+
+export type FormChoicesRead =
+  | { ok: true; forms: FormChoice[] }
+  | { ok: false; error: string };
+
+/**
+ * The forms a template can say it is about.
+ *
+ * Behind `applications.view`, which is wider than the permission that edits
+ * templates — so somebody who may write an email and may not read the
+ * application queue gets an empty list rather than an error. An empty picker
+ * is a screen that says "no forms"; a failed read would be a screen that will
+ * not draw.
+ *
+ * Removed forms never arrive: `ForEventAsync` filters `removed_at IS NULL`
+ * in the query. Worth knowing rather than re-filtering here, because a second
+ * filter would imply the API sends them and quietly rot when it does not.
+ *
+ * Scoped to one event, which is what the endpoint serves. A template is about
+ * this season's form, so that is the right list — but it does mean a template
+ * bound to an older season's form cannot be re-bound to it from here.
+ */
+export async function readFormChoices(): Promise<FormChoicesRead> {
+  let response: Response;
+  try {
+    response = await apiFetch("/admin/forms");
+  } catch {
+    return { ok: false, error: "The API could not be reached." };
+  }
+
+  if (!response.ok) {
+    return { ok: false, error: why(response.status, "Forms could not be loaded.") };
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return { ok: false, error: "Forms could not be loaded." };
+  }
+
+  const rows = Array.isArray(body)
+    ? body
+    : Array.isArray((body as { forms?: unknown })?.forms)
+      ? (body as { forms: unknown[] }).forms
+      : [];
+
+  const forms: FormChoice[] = [];
+
+  for (const entry of rows) {
+    if (typeof entry !== "object" || entry === null) continue;
+
+    const { id, name, code } = entry as {
+      id?: unknown;
+      name?: unknown;
+      code?: unknown;
+    };
+
+    if (typeof id !== "string" || id === "") continue;
+
+    forms.push({
+      id,
+      name: typeof name === "string" && name !== "" ? name : "Untitled form",
+      code: typeof code === "string" ? code : "",
+    });
+  }
+
+  return { ok: true, forms };
 }

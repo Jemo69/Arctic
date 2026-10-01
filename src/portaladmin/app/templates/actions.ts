@@ -67,6 +67,11 @@ function trimmed(draft: TemplateDraft): TemplateDraft {
     fromLocal: draft.fromLocal.trim(),
     fromDomain: draft.fromDomain.trim(),
     replyTo: replyTo === "" ? null : replyTo,
+
+    // Passed through rather than trimmed: it is an id or it is nothing, and
+    // an id with whitespace around it is a bug somewhere upstream rather than
+    // something to quietly repair here.
+    formId: draft.formId ?? null,
   };
 }
 

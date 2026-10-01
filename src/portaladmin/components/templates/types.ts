@@ -60,6 +60,16 @@ export type Template = {
   fromLocal: string;
   fromDomain: string;
   replyTo: string | null;
+
+  /**
+   * The form this email is about, where it is about one.
+   *
+   * Null is the ordinary case: a decision, a welcome and a sign-in link are
+   * about no form at all. When it is set, the editor offers the `form.` group
+   * in its placeholder menu and the API fills those names at send.
+   */
+  formId: string | null;
+
   version: number;
   /** What the allow-list removed from the saved source. Absent on an older API. */
   notes?: string[];
@@ -125,6 +135,14 @@ export type TemplateDraft = {
   fromLocal: string;
   fromDomain: string;
   replyTo: string | null;
+  formId: string | null;
+};
+
+/** One form, as the picker lists it. */
+export type FormChoice = {
+  id: string;
+  name: string;
+  code: string;
 };
 
 /**

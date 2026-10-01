@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Editor } from "@/components/templates/editor";
 import { readPageData } from "@/lib/page-data";
 import { Shell } from "../../shell";
-import { readPlaceholders, readTemplate } from "../api";
+import { readFormChoices, readPlaceholders, readTemplate } from "../api";
 
 export default async function TemplatePage({
   params,
@@ -33,9 +33,10 @@ export default async function TemplatePage({
   // Both reads are started together. The placeholders do not depend on the
   // template, and awaiting them in turn would put a second round trip in front
   // of a page that already waits on one.
-  const { person, data: [read, names] } = await readPageData(() => Promise.all([
+  const { person, data: [read, names, forms] } = await readPageData(() => Promise.all([
     readTemplate(key),
-    readPlaceholders(campaign),
+    readPlaceholders(campaign, key),
+    readFormChoices(),
   ]));
 
   if (!read.ok) {
@@ -71,6 +72,7 @@ export default async function TemplatePage({
         defaultRecipient={person.email ?? ""}
         canManage={person.permissions.has("email.manage_templates")}
         available={names.ok ? names.items : null}
+        forms={forms.ok ? forms.forms : null}
       />
     </Shell>
   );

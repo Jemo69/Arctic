@@ -5,7 +5,7 @@ import { ArrowRight02Icon, BulbIcon, CheckmarkCircle02Icon, InboxIcon, Link01Ico
 import { Icon } from "@/components/ui/icon";
 import { PersonalizedField } from "./personalized-field";
 import { FROM_DOMAIN, FROM_LOCAL, type DraftHandle } from "./use-draft";
-import type { Placeholder, TemplateFormat } from "./types";
+import type { FormChoice, Placeholder, TemplateFormat } from "./types";
 import type { TemplateFieldErrors } from "./validation";
 import styles from "./settings.module.css";
 
@@ -13,10 +13,22 @@ export function TemplateSettings({
   handle,
   available,
   errors,
+  forms,
 }: {
   handle: DraftHandle;
   available: Placeholder[] | null;
   errors: TemplateFieldErrors;
+
+  /**
+   * The forms this template could be about, or null where they could not be
+   * read.
+   *
+   * Null and empty are different and the picker says so differently. Empty is
+   * "there are no forms yet"; null is "the list could not be loaded", which
+   * must not read as the former — somebody would conclude their form had been
+   * deleted.
+   */
+  forms: FormChoice[] | null;
 }) {
   const { draft, set } = handle;
   const [editingReplyTo, setEditingReplyTo] = useState(false);
@@ -92,6 +104,50 @@ export function TemplateSettings({
             <p id="template-preview-tip" className={styles.tip}>
               <Icon icon={BulbIcon} size={17} />
               <span><strong>Tip:</strong> We recommend adding email preview text.</span>
+            </p>
+          </div>
+
+          {/* Last in Details, because almost no template names a form and a
+              field most people skip should not sit above the subject. */}
+          <div className={styles.field}>
+            <label htmlFor="formId">
+              Which form is this about? <span className={styles.optional}>Optional</span>
+            </label>
+
+            <select
+              id="formId"
+              className={styles.input}
+              value={draft.formId}
+              disabled={forms === null || forms.length === 0}
+              onChange={(event) => set("formId", event.target.value)}
+              aria-describedby="template-form-tip"
+            >
+              <option value="">No form</option>
+              {/* The bound form, even when it is not in the list. A form that
+                  was removed is still what this template says, and dropping it
+                  silently would turn "this is bound to a deleted form" into
+                  "this is bound to nothing" without anybody choosing that. */}
+              {draft.formId !== "" && !forms?.some((form) => form.id === draft.formId) ? (
+                <option value={draft.formId}>
+                  The form this was bound to, which no longer exists
+                </option>
+              ) : null}
+              {(forms ?? []).map((form) => (
+                <option key={form.id} value={form.id}>
+                  {form.name}{form.code ? ` (${form.code})` : ""}
+                </option>
+              ))}
+            </select>
+
+            <p id="template-form-tip" className={styles.tip}>
+              <Icon icon={BulbIcon} size={17} />
+              <span>
+                {forms === null
+                  ? "The list of forms could not be loaded, so this cannot be changed right now."
+                  : forms.length === 0
+                    ? "There are no forms yet. Make one and it will appear here."
+                    : <>Choosing one lets the body use <code>{"{{form.link}}"}</code>, <code>{"{{form.name}}"}</code> and <code>{"{{form.closesAt}}"}</code>.</>}
+              </span>
             </p>
           </div>
         </div>
