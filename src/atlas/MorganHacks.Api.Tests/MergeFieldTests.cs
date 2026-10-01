@@ -3,6 +3,7 @@ using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Segments;
 using MorganHacks.Applications.Services;
 using MorganHacks.Lark.Data.Data;
+using Form = MorganHacks.Applications.Forms.Form;
 
 namespace MorganHacks.Api.Tests;
 
@@ -135,6 +136,14 @@ public class MergeFieldValueTests
             Capacity: null,
             CreatedAt: default,
             CreatedBy: null);
+
+    /// <summary>A form with just enough on it to render from.</summary>
+    private static Form Paper() =>
+        new(Guid.Empty, Guid.Empty, "abc2def", "Apply to MorganHacks",
+            Kind: "application",
+            ClosesAt: null,
+            RequiresSignIn: false,
+            EligibleStatuses: []);
 
     private static SegmentMember Member(params (string Column, object? Value)[] answers) =>
         new(null,
@@ -396,6 +405,53 @@ public class MergeFieldValueTests
 
         Assert.Equal("https://evil.example", values["saved.portal"]);
         Assert.Equal("http://localhost:3000", values["link.portal"]);
+    }
+
+    [Fact]
+    public void A_form_placeholder_is_offered_only_to_a_template_that_names_one()
+    {
+        // The rule this whole file exists for, applied to a group rather than
+        // a name: offering {{form.link}} to a template with no form bound
+        // would be offering something the send refuses, discovered by whoever
+        // approves it rather than whoever wrote it.
+        Assert.DoesNotContain(
+            MergeFields.Including([], aboutAForm: false),
+            field => field.Group == MergeFields.Groups.Form);
+
+        Assert.Contains(
+            MergeFields.Including([], aboutAForm: true),
+            field => field.Name == "form.link");
+    }
+
+    [Fact]
+    public void A_form_link_is_built_from_the_forms_origin_and_the_code()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FormsBaseUrl"] = "https://forms.example.test/",
+            })
+            .Build();
+
+        var values = MergeFields.Values(
+            Member(("email", "a@example.invalid")), config,
+            season: null, saved: null, paper: Paper());
+
+        Assert.Equal("https://forms.example.test/abc2def", values["form.link"]);
+        Assert.Equal("Apply to MorganHacks", values["form.name"]);
+    }
+
+    [Fact]
+    public void A_template_whose_form_is_gone_leaves_every_form_placeholder_standing()
+    {
+        // Deleted, or removed by 0038. Both arrive here as null, and the
+        // coverage check turns a standing placeholder into a refusal — which
+        // beats mailing four hundred people a dead link.
+        var values = MergeFields.Values(
+            Member(("email", "a@example.invalid")), NoOrigins,
+            season: null, saved: null, paper: null);
+
+        Assert.DoesNotContain(values.Keys, k => k.StartsWith("form.", StringComparison.Ordinal));
     }
 
     [Fact]
