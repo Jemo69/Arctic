@@ -1,14 +1,16 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Segments;
 using MorganHacks.Applications.Services;
 using MorganHacks.Lark.Data.Data;
 using MorganHacks.Lark.Data.Domain;
 
-// Just the type, not the namespace: Forms and Segments each declare a
+// Just the types, not the namespace: Forms and Segments each declare a
 // ColumnKind, and importing both makes every use of it ambiguous.
 using Form = MorganHacks.Applications.Forms.Form;
+using FormVersion = MorganHacks.Applications.Forms.FormVersion;
 
 namespace MorganHacks.Api;
 
@@ -67,6 +69,21 @@ public static class MergeFields
         public const string Form = "The form";
         public const string Links = "Links";
         public const string Saved = "Saved values";
+
+        /// <summary>
+        /// What each recipient answered the form this template names.
+        /// </summary>
+        /// <remarks>
+        /// Its own heading rather than more rows under <see cref="Form"/>,
+        /// although both appear and disappear together. The three under
+        /// <c>The form</c> are the same sentence for everybody in the send —
+        /// its name, its link, when it closes — and these are different for
+        /// every person who receives the mail. An author scanning a menu for
+        /// "what did they say" is looking for a different thing from an author
+        /// looking for "where is the form", and one heading over both would
+        /// make a per-recipient value look like a fixed one.
+        /// </remarks>
+        public const string Answers = "Their answers";
     }
 
     /// <summary>
@@ -217,8 +234,29 @@ public static class MergeFields
     /// </remarks>
     public const string SavedPrefix = "saved.";
 
+    /// <summary>The prefix every answer to the bound form is offered under.</summary>
+    /// <remarks>
+    /// Three segments rather than two, and the third is what makes the set
+    /// safe. A question keyed <c>link</c> or <c>name</c> is an ordinary thing
+    /// for a form to ask, and <c>{{form.link}}</c> under
+    /// <c>{{form.&lt;key&gt;}}</c> would be that question quietly taking over
+    /// the share URL — or being taken over by it, depending on which loop ran
+    /// last. Under this prefix it is <c>{{form.answer.link}}</c> and the two
+    /// cannot meet, however many questions a form grows.
+    /// <para>
+    /// Structural rather than checked, like <see cref="SavedPrefix"/>:
+    /// <c>DraftKeys</c> holds a question key to
+    /// <c>^[a-z][a-z0-9_]{0,62}$</c>, so a key can never contain a dot and can
+    /// never climb back out of this namespace. The same shape is also why
+    /// every name here matches <c>TemplateRenderer</c>'s <c>[\w.]+</c> without
+    /// anything having to escape it.
+    /// </para>
+    /// </remarks>
+    public const string AnswerPrefix = "form.answer.";
+
     /// <summary>
-    /// The catalogue, plus whatever somebody has saved.
+    /// The catalogue, plus whatever somebody has saved and whatever the bound
+    /// form asks.
     /// </summary>
     /// <remarks>
     /// <see cref="All"/> cannot be a static list any more: saved values are
@@ -226,17 +264,115 @@ public static class MergeFields
     /// caller that offers names to an author or checks a name against them
     /// goes through here; <see cref="All"/> remains what the declaration
     /// alone knows, which is what the schema test compares.
+    /// <para>
+    /// The two groups this file does not declare — the form's questions and
+    /// the saved rows — come after the ones it does, which is the only thing
+    /// about the ordering that is a decision. The editor draws a heading each
+    /// time the group changes, so what matters is that a group's names are
+    /// contiguous rather than where the group sits; and the declared ones keep
+    /// the order <see cref="All"/> gives them, so a group added there is
+    /// offered here without this function being touched.
+    /// </para>
+    /// <para>
+    /// <paramref name="answers"/> is narrowed by the same
+    /// <paramref name="aboutAForm"/> the <c>form.</c> group is, because it is
+    /// the same fact: a template that names no form has no questions to echo,
+    /// and offering a name the send cannot fill is what this file exists to
+    /// stop.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<MergeField> Including(
-        IEnumerable<SavedValue> saved, bool aboutAForm = false) =>
+        IEnumerable<SavedValue> saved,
+        bool aboutAForm = false,
+        FormAnswers? answers = null) =>
     [
         .. aboutAForm ? All : All.Where(field => field.Group != Groups.Form),
+        .. aboutAForm ? Asked(answers ?? FormAnswers.None) : [],
         .. saved.Select(value => new MergeField(
             SavedPrefix + value.Name,
             Groups.Saved,
             value.Description ?? "Saved by an organizer.",
             OnAddressLists: true)),
     ];
+
+    /// <summary>One placeholder per question on the form a template names.</summary>
+    /// <remarks>
+    /// <see cref="MergeField.OnAddressLists"/> is false for all of them, and
+    /// that is the whole reason this is not simply three more rows of
+    /// <see cref="Paper"/>. An answer belongs to one person, and a typed list
+    /// of addresses is mentors and sponsors nobody has an answer for — so the
+    /// name is not offered there rather than offered and then refused at send.
+    /// <para>
+    /// The description is the question's own wording, which is the obvious
+    /// choice and also the only honest one: the editor shows it beside the name
+    /// so an author can tell <c>{{form.answer.q1}}</c> from
+    /// <c>{{form.answer.q2}}</c>, and nothing else about the question says
+    /// which is which.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<MergeField> Asked(FormAnswers answers) =>
+        answers.Questions.Select(question => new MergeField(
+            AnswerPrefix + question.Key,
+            Groups.Answers,
+            Wording(question.Label),
+            OnAddressLists: false));
+
+    /// <summary>
+    /// A question's own wording, short enough to sit in a menu.
+    /// </summary>
+    /// <remarks>
+    /// MLH's data-sharing agreement is sixty words, and a form can ask it. A
+    /// description is laid out as one line beside a name, so the long ones are
+    /// cut — the same move <c>SubmissionValidation.Shorten</c> makes when it
+    /// quotes a label back inside a complaint, at a looser bound because this
+    /// one is a row of its own rather than the middle of a sentence.
+    /// <para>
+    /// The fallback is unreachable while publishing refuses a question with no
+    /// wording, and is here because a name with nothing beside it is a name
+    /// somebody has to guess at and that is worse than a dull sentence.
+    /// </para>
+    /// </remarks>
+    private static string Wording(string label) =>
+        string.IsNullOrWhiteSpace(label) ? "A question on the form."
+        : label.Length <= 80 ? label
+        : label[..77].TrimEnd() + "…";
+
+    /// <summary>
+    /// The questions on the form a template names whose answers a message may
+    /// carry.
+    /// </summary>
+    /// <remarks>
+    /// The <b>published</b> version's, which is what is being answered now.
+    /// <c>AnswerQuestions</c> gives the reasoning at length and it applies
+    /// unchanged here: a question that existed in version two and is gone from
+    /// version five still has answers sitting in older rows, and the people who
+    /// gave them are left with the placeholder standing. Offering every
+    /// question that ever existed is the more complete list and a much longer
+    /// one, and it is not what this does.
+    /// <para>
+    /// Narrowed to the answers that are in the answer set at all — see
+    /// <see cref="AnswerQuestions.InTheAnswerSet"/>, which is the one place
+    /// that decides where an answer lives. The case that matters is an
+    /// application form's promoted question: <c>school</c> is answered into
+    /// <c>applications.school</c> and not into the jsonb, so
+    /// <c>{{form.answer.school}}</c> could never be filled — and
+    /// <c>{{school}}</c> already exists for it, two rows up this very menu.
+    /// </para>
+    /// <para>
+    /// Empty for a form nobody has published, which still offers the
+    /// <c>form.</c> group: the link and the name are properties of the form and
+    /// do not wait on a version. A form with no questions yet and a form with
+    /// no answerable ones look the same from here, and both are honest.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<AnswerQuestion> QuestionsOn(
+        Form? paper, FormVersion? published) =>
+        paper is null || published is null
+            ? []
+            : AnswerQuestions.On(
+                paper.IsApplication,
+                [.. published.Fields.Where(field =>
+                    AnswerQuestions.InTheAnswerSet(paper.IsApplication, field))]);
 
     /// <summary>Every placeholder the declaration alone knows.</summary>
     public static readonly IReadOnlyList<MergeField> All =
@@ -297,7 +433,8 @@ public static class MergeFields
         IConfiguration config,
         EventDetail? season = null,
         IReadOnlyList<SavedValue>? saved = null,
-        Form? paper = null)
+        Form? paper = null,
+        FormAnswers? answers = null)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -359,6 +496,34 @@ public static class MergeFields
             }
         }
 
+        // Last, beside the columns, because an answer and a column are the two
+        // things in here that belong to one recipient rather than to the whole
+        // send. Nothing above can be shadowed by one all the same:
+        // AnswerPrefix is reserved and a question key cannot hold a dot, so
+        // form.answer.link is not form.link and can never become it.
+        //
+        // Null where the template names no form, names one that is gone, or
+        // names one nobody has published. All three leave every answer
+        // placeholder standing, which the coverage check turns into a refusal —
+        // the same failure, for the same reason, as the dead-link case above.
+        if (answers is not null)
+        {
+            // The questions, not the keys in the row. A form's author can add a
+            // question at any time and an answer can be stored under a key the
+            // catalogue never offered; filling one of those would be the one
+            // list read two ways, which is the failure this file is about.
+            var given = answers.Of(member.Email);
+
+            foreach (var question in answers.Questions)
+            {
+                if (given.TryGetValue(question.Key, out var answer)
+                    && Reads(answer) is { } value)
+                {
+                    values[AnswerPrefix + question.Key] = value;
+                }
+            }
+        }
+
         return values;
     }
 
@@ -399,13 +564,112 @@ public static class MergeFields
                 + $"{stored.GetType().Name}."),
         };
 
+    /// <summary>
+    /// How one form answer reads inside a sentence, or null for nothing.
+    /// </summary>
+    /// <remarks>
+    /// The same job as <see cref="Reads(object?, ApplicantColumn)"/> over a
+    /// different set of types, and the same answers where they overlap: a
+    /// boolean is "yes" and not "True", a number carries no thousands
+    /// separator. An organizer who merges a tick on one form and a boolean
+    /// column on another must not get two different words for it.
+    /// <para>
+    /// Read off the JSON shape rather than off the question's declared type,
+    /// which is not laxity but the only thing that is actually true of the
+    /// stored value. <c>applications.responses</c> is written through a
+    /// normaliser that types the answer; <c>form_submissions.answers</c> holds
+    /// what the browser posted, where a number input posts <c>"21"</c> and a
+    /// checkbox posts <c>true</c> — <c>PostgresSegmentResolver.Matches</c> has
+    /// the same paragraph for the same reason. A renderer that trusted the
+    /// question would print the raw JSON for half the forms in the table.
+    /// </para>
+    /// <para>
+    /// The number is handed back as it was stored rather than parsed and
+    /// reformatted. A JSON number has no separators and no culture in it
+    /// already, so a round trip through <see cref="decimal"/> could only lose
+    /// something — <c>3.50</c> becoming <c>3.5</c> on an answer somebody typed
+    /// as a price.
+    /// </para>
+    /// <para>
+    /// Trimmed, unlike the text column above. That one is written by the submit
+    /// path's normaliser and this one is what a browser posted, so a space at
+    /// either end is a real possibility — and it is visible in the middle of a
+    /// sentence rather than merely untidy.
+    /// </para>
+    /// <para>
+    /// Null for an object, which is the one shape with no answer in it: a file
+    /// question stores where the upload went.
+    /// <see cref="AnswerQuestions.InTheAnswerSet"/> already keeps those out of
+    /// the catalogue, so this is the second line rather than the first — and it
+    /// is here because an upload id rendered into a body is
+    /// <c>applications.resume_key</c> leaving the schema by another door.
+    /// </para>
+    /// </remarks>
+    private static string? Reads(JsonElement answer) => answer.ValueKind switch
+    {
+        JsonValueKind.String => answer.GetString() is { } text
+                                && !string.IsNullOrWhiteSpace(text)
+            ? text.Trim()
+            : null,
+
+        JsonValueKind.Number => answer.GetRawText(),
+        JsonValueKind.True => "yes",
+        JsonValueKind.False => "no",
+        JsonValueKind.Array => Chosen(answer),
+        _ => null,
+    };
+
+    /// <summary>
+    /// A multi-select as a person would write it, or null for nothing picked.
+    /// </summary>
+    /// <remarks>
+    /// "Hardware, design and games", not <c>["hardware","design","games"]</c>.
+    /// A checkbox question is one answer with several parts and the array is
+    /// how it is stored; an email that showed the brackets would be showing the
+    /// reader our schema, and quoting it back inside a sentence is the entire
+    /// point of the feature.
+    /// <para>
+    /// No comma before the "and". One is defensible and this reads as more
+    /// people write it; what matters is that there is one rule rather than a
+    /// decision per template.
+    /// </para>
+    /// <para>
+    /// Each element goes through <see cref="Reads(JsonElement)"/>, so a list of
+    /// numbers or of ticks is not a special case and a blank element is dropped
+    /// rather than left as a hole between two commas. An empty array is null,
+    /// which is the same answer <c>SubmissionValidation.IsAnswered</c> gives
+    /// it: a checkbox group with nothing ticked is the absence of an answer and
+    /// not an answer of none.
+    /// </para>
+    /// </remarks>
+    private static string? Chosen(JsonElement picked)
+    {
+        var parts = new List<string>();
+
+        foreach (var item in picked.EnumerateArray())
+        {
+            if (Reads(item) is { } part)
+            {
+                parts.Add(part);
+            }
+        }
+
+        return parts.Count switch
+        {
+            0 => null,
+            1 => parts[0],
+            _ => string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1],
+        };
+    }
+
     /// <summary>The placeholders a segment can fill for everybody in it.</summary>
     public static IReadOnlySet<string> Fillable(
         Segment segment,
         IReadOnlyList<SavedValue>? saved = null,
-        bool aboutAForm = false) =>
+        bool aboutAForm = false,
+        FormAnswers? answers = null) =>
         new HashSet<string>(
-            For(segment, saved, aboutAForm).Select(field => field.Name),
+            For(segment, saved, aboutAForm, answers).Select(field => field.Name),
             StringComparer.Ordinal);
 
     /// <summary>The fields a segment can fill, described for the editor.</summary>
@@ -419,13 +683,20 @@ public static class MergeFields
     /// not offered — rather than offered and then refused at send by somebody
     /// who did not write it.
     /// </para>
+    /// <para>
+    /// A typed list of addresses drops the answers along with the applicant
+    /// columns, and by the same rule rather than by a second one: an answer is
+    /// one person's, and these recipients are people this system has no answers
+    /// for. See <see cref="Asked"/>, where that is one false flag.
+    /// </para>
     /// </remarks>
     public static IEnumerable<MergeField> For(
         Segment segment,
         IReadOnlyList<SavedValue>? saved = null,
-        bool aboutAForm = false)
+        bool aboutAForm = false,
+        FormAnswers? answers = null)
     {
-        var catalogue = Including(saved ?? [], aboutAForm);
+        var catalogue = Including(saved ?? [], aboutAForm, answers);
 
         return segment is Segment.Addresses
             ? catalogue.Where(field => field.OnAddressLists)
@@ -439,6 +710,16 @@ public static class MergeFields
     /// <remarks>
     /// Sorted, because these are read out on a screen and by an assertion, and
     /// both want the same order twice.
+    /// <para>
+    /// Every argument is forwarded to <see cref="Values"/> and that is the
+    /// whole of this function. It took <paramref name="paper"/> and dropped it
+    /// before passing it on, which made every <c>{{form.*}}</c> placeholder
+    /// unfilled for everybody — so a template that named a form and used its
+    /// link was counted as a gap for the entire segment and refused at send,
+    /// with nothing on the screen to explain why. The coverage check and the
+    /// render have to measure what the send will actually write, so this list
+    /// must come from one call and never from a second one that agrees today.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<string> Unfilled(
         IReadOnlySet<string> wanted,
@@ -446,9 +727,10 @@ public static class MergeFields
         IConfiguration config,
         EventDetail? season = null,
         IReadOnlyList<SavedValue>? saved = null,
-        Form? paper = null)
+        Form? paper = null,
+        FormAnswers? answers = null)
     {
-        var values = Values(member, config, season, saved);
+        var values = Values(member, config, season, saved, paper, answers);
 
         return wanted.Where(placeholder => !values.ContainsKey(placeholder))
                      .OrderBy(placeholder => placeholder, StringComparer.Ordinal)

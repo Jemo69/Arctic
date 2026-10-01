@@ -450,6 +450,17 @@ public class EmailTriggerTests(ApplicationsDatabase db)
         public Task<SegmentMember?> MemberOfAsync(
             Guid applicationId, CancellationToken ct = default) =>
             throw new InvalidOperationException("No.");
+
+        // Delegated, not thrown. This double exists to break the one lookup a
+        // triggered send makes for its own recipient; breaking the answer
+        // lookup as well would make these tests pass for a second reason they
+        // are not about.
+        public Task<FormAnswers> AnswersToAsync(
+            Form form,
+            IReadOnlyList<AnswerQuestion> questions,
+            IReadOnlyList<SegmentMember> members,
+            CancellationToken ct = default) =>
+            _real.AnswersToAsync(form, questions, members, ct);
     }
 
     private HttpClient Client(WebApplicationFactory<Program>? app = null) =>

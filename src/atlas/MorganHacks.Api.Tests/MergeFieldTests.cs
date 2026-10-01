@@ -1,9 +1,18 @@
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Segments;
 using MorganHacks.Applications.Services;
 using MorganHacks.Lark.Data.Data;
+
+// Just the types, not the namespace, for the reason MergeFields itself gives:
+// Forms and Segments each declare a ColumnKind, and MergeFieldSchemaTests below
+// reads the Segments one.
+using AnswerStorage = MorganHacks.Applications.Forms.AnswerStorage;
+using FieldType = MorganHacks.Applications.Forms.FieldType;
 using Form = MorganHacks.Applications.Forms.Form;
+using FormField = MorganHacks.Applications.Forms.FormField;
+using FormVersion = MorganHacks.Applications.Forms.FormVersion;
 
 namespace MorganHacks.Api.Tests;
 
@@ -138,16 +147,71 @@ public class MergeFieldValueTests
             CreatedBy: null);
 
     /// <summary>A form with just enough on it to render from.</summary>
-    private static Form Paper() =>
+    private static Form Paper(string kind = "application") =>
         new(Guid.Empty, Guid.Empty, "abc2def", "Apply to MorganHacks",
-            Kind: "application",
+            Kind: kind,
             ClosesAt: null,
             RequiresSignIn: false,
             EligibleStatuses: []);
 
+    /// <summary>One question on that form.</summary>
+    private static FormField Question(string key, FieldType type = FieldType.ShortText) =>
+        new() { Key = key, Type = type, Label = $"What is your {key}?" };
+
+    /// <summary>A published version carrying those questions and nothing else.</summary>
+    private static FormVersion Published(params FormField[] questions) =>
+        new(Guid.Empty, Guid.Empty, 3, "published", questions, default, default);
+
+    /// <summary>
+    /// What a bound form contributes to the catalogue, and nobody's answers.
+    /// </summary>
+    /// <remarks>
+    /// Through <see cref="MergeFields.QuestionsOn"/> rather than by building an
+    /// <see cref="AnswerQuestion"/> list by hand, because which questions
+    /// become names is the thing under test in half of these.
+    /// </remarks>
+    private static FormAnswers Asks(string kind, params FormField[] questions) =>
+        FormAnswers.Asked(MergeFields.QuestionsOn(Paper(kind), Published(questions)));
+
+    /// <summary>
+    /// The same, plus what one person answered.
+    /// </summary>
+    /// <remarks>
+    /// The answers are written as JSON text rather than as C# values, for the
+    /// reason <c>AnswerSegmentTests</c> gives: the cases that matter are a
+    /// number posted as <c>"4"</c> and a tick posted as <c>true</c>, and
+    /// writing them as objects would let the serializer decide the thing under
+    /// test.
+    /// </remarks>
+    private static FormAnswers Answered(
+        string email, params (string Key, string Json)[] answers) =>
+        Asks("survey", [.. answers.Select(answer => Question(answer.Key))]) with
+        {
+            Given = new Dictionary<string, IReadOnlyDictionary<string, JsonElement>>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [email] = answers.ToDictionary(
+                    answer => answer.Key,
+                    answer => JsonDocument.Parse(answer.Json).RootElement.Clone(),
+                    StringComparer.Ordinal),
+            },
+        };
+
+    /// <summary>The address a member built here is addressed to.</summary>
+    /// <remarks>
+    /// Named rather than typed out twice, because an answer lookup is keyed on
+    /// the recipient's address — so a test whose fixture and whose member
+    /// disagreed about it would be asserting that nobody answered.
+    /// </remarks>
+    private const string Someone = "someone@example.invalid";
+
     private static SegmentMember Member(params (string Column, object? Value)[] answers) =>
+        Member(Someone, answers);
+
+    private static SegmentMember Member(
+        string email, params (string Column, object? Value)[] answers) =>
         new(null,
-            "someone@example.invalid",
+            email,
             answers.ToDictionary(
                 answer => answer.Column, answer => answer.Value, StringComparer.Ordinal));
 
@@ -469,5 +533,348 @@ public class MergeFieldValueTests
             Assert.False(string.IsNullOrWhiteSpace(field.Description));
             Assert.Null(field.Column);
         });
+    }
+
+    [Fact]
+    public void A_form_placeholder_that_resolves_is_not_counted_as_a_gap()
+    {
+        // Unfilled forwarded everything to Values except the form, so every
+        // {{form.*}} placeholder was unfilled for everybody — which meant a
+        // template that named a form and used its link was a gap for the whole
+        // segment and refused at send, with nothing on the screen to say why.
+        // The coverage check and the render have to measure what the send will
+        // actually write.
+        var wanted = new HashSet<string>(StringComparer.Ordinal) { "form.link", "form.closesAt" };
+
+        Assert.Equal(
+            ["form.closesAt"],
+            MergeFields.Unfilled(
+                wanted, Member(("email", "a@example.invalid")), NoOrigins,
+                season: null, saved: null, paper: Paper()));
+    }
+
+    // -------------------------------------------------- answers to the form ---
+
+    [Fact]
+    public void A_question_is_offered_only_to_a_template_that_names_the_form()
+    {
+        // The same narrowing the form group already had, extended rather than
+        // worked around: the questions arrive with the form and disappear with
+        // it, because a template that names no form has nobody's answers to
+        // echo and offering the name would be offering what the send refuses.
+        var asks = Asks("survey", Question("shirt_size"));
+
+        Assert.DoesNotContain(
+            MergeFields.Including([], aboutAForm: false, asks),
+            field => field.Name == "form.answer.shirt_size");
+
+        var offered = Assert.Single(
+            MergeFields.Including([], aboutAForm: true, asks),
+            field => field.Name == "form.answer.shirt_size");
+
+        // Under its own heading, and described by the question's own wording —
+        // which is the only thing that tells form.answer.q1 from
+        // form.answer.q2 in a menu.
+        Assert.Equal(MergeFields.Groups.Answers, offered.Group);
+        Assert.Equal("What is your shirt_size?", offered.Description);
+    }
+
+    [Fact]
+    public void An_answer_fills_in_for_the_person_who_gave_it()
+    {
+        // The feature in one assertion: "you told us your shirt size is
+        // medium", with the answer coming off the row rather than out of a
+        // sentence an organizer typed from memory.
+        var values = MergeFields.Values(
+            Member(("email", Someone)), NoOrigins,
+            season: null, saved: null, paper: Paper("survey"),
+            answers: Answered(Someone, ("shirt_size", "\"medium\"")));
+
+        Assert.Equal("medium", values["form.answer.shirt_size"]);
+    }
+
+    [Fact]
+    public void An_address_is_matched_whatever_case_it_is_stored_in()
+    {
+        // applications.email keeps what somebody typed and the dedupe index is
+        // on lower(email), so the address a segment hands back and the one a
+        // lookup keyed on are routinely the same address in different cases.
+        var values = MergeFields.Values(
+            Member("Someone@Example.INVALID", ("email", Someone)), NoOrigins,
+            season: null, saved: null, paper: Paper("survey"),
+            answers: Answered(Someone, ("shirt_size", "\"medium\"")));
+
+        Assert.Equal("medium", values["form.answer.shirt_size"]);
+    }
+
+    [Fact]
+    public void Somebody_who_never_answered_leaves_the_placeholder_standing()
+    {
+        // Not substituted empty, which is the whole rule here and the same one
+        // a null applicant column gets. "You told us your shirt size is" and
+        // then nothing is worse than a send that is refused, so the value
+        // stays out of the dictionary and the coverage check counts it.
+        var answers = Answered(Someone, ("shirt_size", "\"medium\""));
+
+        var absent = Member("grace@example.invalid", ("email", "grace@example.invalid"));
+
+        Assert.False(
+            MergeFields.Values(absent, NoOrigins, null, null, Paper("survey"), answers)
+                .ContainsKey("form.answer.shirt_size"));
+
+        Assert.Equal(
+            ["form.answer.shirt_size"],
+            MergeFields.Unfilled(
+                new HashSet<string>(StringComparer.Ordinal) { "email", "form.answer.shirt_size" },
+                absent, NoOrigins, null, null, Paper("survey"), answers));
+    }
+
+    [Theory]
+    // A choice, a short answer and a date are all strings in the jsonb.
+    [InlineData("\"medium\"", "medium")]
+    // A tick is "yes", never "True" — the same word a boolean column renders
+    // as, because an organizer must not get two words for one thing.
+    [InlineData("true", "yes")]
+    [InlineData("false", "no")]
+    // A number with no thousands separator, like graduationYear: 2027 and
+    // never 2,027.
+    [InlineData("2027", "2027")]
+    // A number input posts a string, which is a number to a reader either way.
+    [InlineData("\"21\"", "21")]
+    // Stored as typed rather than parsed and reformatted, so a price keeps its
+    // cents.
+    [InlineData("3.50", "3.50")]
+    // Trimmed: this is what a browser posted rather than what a normaliser
+    // wrote, and a stray space is visible in the middle of a sentence.
+    [InlineData("\"  medium  \"", "medium")]
+    public void Each_shape_of_answer_reads_as_a_person_would_write_it(string json, string reads)
+    {
+        var values = MergeFields.Values(
+            Member(("email", Someone)), NoOrigins,
+            season: null, saved: null, paper: Paper("survey"),
+            answers: Answered(Someone, ("answer", json)));
+
+        Assert.Equal(reads, values["form.answer.answer"]);
+    }
+
+    [Theory]
+    // One ticked box is one value, with nothing joining it to anything.
+    [InlineData("""["hardware"]""", "hardware")]
+    [InlineData("""["hardware","design"]""", "hardware and design")]
+    [InlineData("""["hardware","design","games"]""", "hardware, design and games")]
+    // Each element reads the same way a bare answer does, so a list of
+    // numbers is not a special case.
+    [InlineData("[1,2]", "1 and 2")]
+    // A blank element is dropped rather than left as a hole between commas.
+    [InlineData("""["hardware","   ","games"]""", "hardware and games")]
+    public void A_multi_select_reads_as_a_sentence_rather_than_as_JSON(string json, string reads)
+    {
+        // ["hardware","design"] in the middle of an email is us showing the
+        // reader our schema. A checkbox question is one answer with several
+        // parts, and quoting it back inside a sentence is the point of the
+        // feature.
+        var values = MergeFields.Values(
+            Member(("email", Someone)), NoOrigins,
+            season: null, saved: null, paper: Paper("survey"),
+            answers: Answered(Someone, ("track", json)));
+
+        Assert.Equal(reads, values["form.answer.track"]);
+    }
+
+    [Theory]
+    // Text nobody typed into, which is the same absence as no answer at all.
+    [InlineData("\"   \"")]
+    // Nothing ticked. SubmissionValidation reads an empty array as unanswered
+    // and so does this, because an answer of none is not an answer.
+    [InlineData("[]")]
+    [InlineData("null")]
+    // The one object-shaped answer is an upload, and what it holds is where
+    // the file went. InTheAnswerSet keeps those out of the catalogue; this is
+    // the line under it, because an upload id rendered into a body is
+    // applications.resume_key leaving the schema by another door.
+    [InlineData("""{"upload":"5d4b8f2a-0000-4000-8000-000000000001"}""")]
+    public void An_answer_with_nothing_in_it_is_a_gap_rather_than_an_empty_value(string json)
+    {
+        var values = MergeFields.Values(
+            Member(("email", Someone)), NoOrigins,
+            season: null, saved: null, paper: Paper("survey"),
+            answers: Answered(Someone, ("answer", json)));
+
+        Assert.False(values.ContainsKey("form.answer.answer"));
+    }
+
+    [Fact]
+    public void A_question_keyed_link_does_not_collide_with_the_form_link()
+    {
+        // Why the prefix has three segments. A form asking "where can we find
+        // your work" keyed `link` is ordinary, and under {{form.<key>}} it
+        // would take over the share URL — or be taken over by it, depending on
+        // which loop ran last. Structural rather than checked: DraftKeys holds
+        // a key to ^[a-z][a-z0-9_]{0,62}$, so a key can never hold a dot and
+        // can never climb out of this namespace.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FormsBaseUrl"] = "https://forms.example.test",
+            })
+            .Build();
+
+        var answers = Answered(
+            Someone,
+            ("link", "\"https://ada.example/portfolio\""),
+            ("name", "\"Ada\""));
+
+        var offered = MergeFields.Including([], aboutAForm: true, answers)
+            .Select(field => field.Name)
+            .ToList();
+
+        Assert.Contains("form.link", offered);
+        Assert.Contains("form.answer.link", offered);
+        Assert.Contains("form.name", offered);
+        Assert.Contains("form.answer.name", offered);
+
+        var values = MergeFields.Values(
+            Member(("email", Someone)), config,
+            season: null, saved: null, paper: Paper("survey"), answers: answers);
+
+        Assert.Equal("https://forms.example.test/abc2def", values["form.link"]);
+        Assert.Equal("https://ada.example/portfolio", values["form.answer.link"]);
+        Assert.Equal("Apply to MorganHacks", values["form.name"]);
+        Assert.Equal("Ada", values["form.answer.name"]);
+    }
+
+    [Fact]
+    public void An_answer_the_catalogue_never_offered_is_not_filled_in()
+    {
+        // The one list read twice, in the direction that is easy to get wrong.
+        // A form's author can add a question at any moment, so a row can hold
+        // an answer under a key no editor was ever shown — and filling it
+        // would mean the send writing a name the catalogue does not know.
+        var answers = Asks("survey", Question("shirt_size")) with
+        {
+            Given = new Dictionary<string, IReadOnlyDictionary<string, JsonElement>>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [Someone] = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                {
+                    ["shirt_size"] = JsonSerializer.SerializeToElement("medium"),
+                    ["added_later"] = JsonSerializer.SerializeToElement("whatever"),
+                },
+            },
+        };
+
+        var values = MergeFields.Values(
+            Member(("email", Someone)), NoOrigins,
+            season: null, saved: null, paper: Paper("survey"), answers: answers);
+
+        Assert.Equal("medium", values["form.answer.shirt_size"]);
+        Assert.False(values.ContainsKey("form.answer.added_later"));
+    }
+
+    [Fact]
+    public void A_typed_list_of_addresses_is_offered_no_answers_at_all()
+    {
+        // Same rule as the applicant columns rather than a second one: these
+        // recipients are sponsors and mentors this system has never heard of,
+        // so there is no answer of theirs to echo. The form's own link and name
+        // are still offered, because they do not depend on who is receiving it.
+        var answers = Asks("survey", Question("shirt_size"));
+
+        var fillable = MergeFields.Fillable(
+            new Segment.Addresses(["sponsor@example.invalid"]),
+            saved: null, aboutAForm: true, answers: answers);
+
+        Assert.DoesNotContain("form.answer.shirt_size", fillable);
+        Assert.Contains("form.link", fillable);
+
+        Assert.Contains(
+            "form.answer.shirt_size",
+            MergeFields.Fillable(
+                new Segment.InStatus(Guid.NewGuid(), [ApplicationStatus.Accepted]),
+                saved: null, aboutAForm: true, answers: answers));
+    }
+
+    [Fact]
+    public void A_long_answer_is_offered_even_though_it_cannot_pick_an_audience()
+    {
+        // The one place the merge catalogue is deliberately wider than the
+        // audience picker. A paragraph is excluded from segments because
+        // matching part of one is a search that catches the people who said
+        // the opposite — which is a judgement about audiences and says nothing
+        // about whether an email may quote it back.
+        Assert.Contains(
+            MergeFields.Including([], aboutAForm: true, Asks("survey", Question("why", FieldType.Paragraph))),
+            field => field.Name == "form.answer.why");
+    }
+
+    [Fact]
+    public void An_upload_is_not_offered_because_there_is_no_answer_in_it()
+    {
+        // What is stored is where the file went, which is applications.
+        // resume_key under another column — withheld from the mail by name,
+        // because a storage key in an email is a way to read somebody's CV for
+        // anybody it is forwarded to.
+        Assert.DoesNotContain(
+            MergeFields.Including([], aboutAForm: true, Asks("survey", Question("cv", FieldType.File))),
+            field => field.Group == MergeFields.Groups.Answers);
+    }
+
+    [Fact]
+    public void An_answer_kept_in_a_column_of_its_own_is_not_offered_on_an_application_form()
+    {
+        // The case that would otherwise be an offered name no send could fill.
+        // An application form's promoted answer is written to
+        // applications.school and not also to responses, so
+        // {{form.answer.school}} would be blank for everybody — and {{school}}
+        // already exists for it, two rows up the same menu. A survey keeps
+        // every answer in form_submissions.answers whatever the question says
+        // about a column, so there the same question is offered: both
+        // directions together, because this is the surprising claim.
+        var school = Question("school") with
+        {
+            Storage = AnswerStorage.Column,
+            Column = "school",
+        };
+
+        Assert.DoesNotContain(
+            MergeFields.Including([], aboutAForm: true, Asks("application", school)),
+            field => field.Group == MergeFields.Groups.Answers);
+
+        Assert.Contains(
+            MergeFields.Including([], aboutAForm: true, Asks("survey", school)),
+            field => field.Name == "form.answer.school");
+    }
+
+    [Fact]
+    public void A_form_nobody_has_published_offers_its_link_and_no_questions()
+    {
+        // Two different things, and both are honest. A link and a name belong
+        // to the form rather than to a version of it, so they resolve from the
+        // moment it exists; a question nobody is being asked yet has no answer
+        // anybody could have given.
+        var offered = MergeFields.Including(
+                [], aboutAForm: true, FormAnswers.Asked(MergeFields.QuestionsOn(Paper(), null)))
+            .Select(field => field.Name)
+            .ToList();
+
+        Assert.Contains("form.link", offered);
+        Assert.DoesNotContain(offered, name => name.StartsWith("form.answer.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_question_with_wording_too_long_for_a_menu_is_cut_rather_than_dropped()
+    {
+        // MLH's data-sharing agreement is sixty words and a form can ask it. A
+        // description is one line beside a name, and the alternative to cutting
+        // it is a menu row that is one paragraph tall.
+        var asked = Assert.Single(
+            MergeFields.Including(
+                [],
+                aboutAForm: true,
+                Asks("survey", Question("agree") with { Label = new string('x', 500) })),
+            field => field.Group == MergeFields.Groups.Answers);
+
+        Assert.True(asked.Description.Length < 100);
+        Assert.EndsWith("…", asked.Description);
     }
 }

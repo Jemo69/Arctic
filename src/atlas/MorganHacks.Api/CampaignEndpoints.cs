@@ -348,6 +348,7 @@ public static class CampaignEndpoints
         TemplateStore templates,
         CampaignStore campaigns,
         SavedValueStore savedValues,
+        IFormStore forms,
         ILogger<CreateCampaignRequest> log,
         CancellationToken ct)
     {
@@ -395,7 +396,9 @@ public static class CampaignEndpoints
 
         var unfillable = segment is null
             ? null
-            : Unfillable(template, segment, await savedValues.ListAsync(ct), template.FormId is not null);
+            : Unfillable(
+                template, segment, await savedValues.ListAsync(ct),
+                template.FormId is not null, await AskedOn(template, forms, ct));
         if (unfillable is not null)
         {
             return Results.BadRequest(new { error = unfillable });
@@ -415,7 +418,7 @@ public static class CampaignEndpoints
     private static async Task<IResult> Update(
         Guid id, UpdateCampaignRequest? request, HttpContext http,
         CampaignStore campaigns, TemplateStore templates,
-        SavedValueStore savedValues, CancellationToken ct)
+        SavedValueStore savedValues, IFormStore forms, CancellationToken ct)
     {
         var campaign = await campaigns.FindAsync(id, ct);
         if (campaign is null) return Results.NotFound(new { error = "No such campaign." });
@@ -455,7 +458,9 @@ public static class CampaignEndpoints
             return Results.BadRequest(new { error = $"Use a sender address on {template.FromDomain}, the sending domain for this template." });
         var settings = new CampaignEmailSettings(subject, previewText, fromName, fromEmail, replyTo);
         if (segment is not null
-            && Unfillable(settings.Apply(template), segment, await savedValues.ListAsync(ct), template.FormId is not null) is { } problem)
+            && Unfillable(
+                settings.Apply(template), segment, await savedValues.ListAsync(ct),
+                template.FormId is not null, await AskedOn(template, forms, ct)) is { } problem)
             return Results.BadRequest(new { error = problem });
 
         if (!await campaigns.UpdateDraftAsync(id, campaign.Revision, name, settings, segment?.ToJson(),
@@ -548,12 +553,17 @@ public static class CampaignEndpoints
         var template = await templates.FindAsync(campaign.TemplateKey, ct);
         if (template is not null && campaign.Settings is not null) template = campaign.Settings.Apply(template);
 
-        // Both read once, before the first check that needs them. The saved
+        // All read once, before the first check that needs them. The saved
         // values are part of what a name resolves against, so the unfillable
         // check below cannot run without them.
         var season = await SeasonFor(segment!, events, ct);
         var saved = await savedValues.ListAsync(ct);
         var paper = await PaperFor(template, forms, ct);
+
+        // Of the whole segment and not of the sendable list, so the sample's
+        // coverage is measured against the same answers the send will freeze.
+        // One query — see AnswersFor.
+        var answers = await AnswersFor(paper, resolved.Members, forms, resolver, ct);
 
         var problems = new List<string>();
 
@@ -564,7 +574,7 @@ public static class CampaignEndpoints
             // it. Same condition Send refuses on, said earlier.
             problems.Add(MissingTemplate);
         }
-        else if (Unfillable(template, segment!, saved, paper is not null) is { } problem)
+        else if (Unfillable(template, segment!, saved, paper is not null, answers) is { } problem)
         {
             problems.Add(problem);
         }
@@ -574,7 +584,7 @@ public static class CampaignEndpoints
         // campaign holds, MissingTemplate above is already saying the campaign
         // has to be drafted again — and showing the current wording is still
         // the most useful thing on the screen while somebody does.
-        var coverage = Covered(template, sendable, config, season, saved, paper);
+        var coverage = Covered(template, sendable, config, season, saved, paper, answers);
 
         if (Missing(coverage) is { } gap)
         {
@@ -620,7 +630,7 @@ public static class CampaignEndpoints
 
             // A few of them, actually rendered. Of the sendable list for the
             // same reason the sample is.
-            renders = Rendered(template, sendable, config, season, saved, paper),
+            renders = Rendered(template, sendable, config, season, saved, paper, answers),
         });
     }
 
@@ -637,10 +647,13 @@ public static class CampaignEndpoints
     /// the send renders with — an editor offering a name that is not on it
     /// would be offering a template that refuses at send.
     /// <para>
-    /// Reads nothing but the campaign's own row. The segment is not resolved:
-    /// which fields a segment can fill is a property of its shape rather than
-    /// of who is in it today, and an editor asking on every keystroke must not
-    /// be a scan of <c>applications.*</c> each time.
+    /// Reads nothing but the campaign's own row and the form it names. The
+    /// segment is not resolved: which fields a segment can fill is a property
+    /// of its shape rather than of who is in it today, and an editor asking on
+    /// every keystroke must not be a scan of <c>applications.*</c> each time.
+    /// The questions are a property of the form for the same reason — which
+    /// names exist does not depend on who has answered, so no answer is read
+    /// here.
     /// </para>
     /// </remarks>
     private static async Task<IResult> Placeholders(
@@ -648,6 +661,7 @@ public static class CampaignEndpoints
         CampaignStore campaigns,
         TemplateStore templates,
         SavedValueStore savedValues,
+        IFormStore forms,
         CancellationToken ct)
     {
         var campaign = await campaigns.FindAsync(id, ct);
@@ -661,12 +675,15 @@ public static class CampaignEndpoints
             return unreadable;
         }
 
+        var paper = await PaperFor(await templates.FindAsync(campaign.TemplateKey, ct), forms, ct);
+
         return Results.Ok(new
         {
             placeholders = MergeFields.For(
                     segment!,
                     await savedValues.ListAsync(ct),
-                    aboutAForm: (await templates.FindAsync(campaign.TemplateKey, ct))?.FormId is not null)
+                    aboutAForm: paper is not null,
+                    answers: FormAnswers.Asked(await QuestionsOn(paper, forms, ct)))
                 .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
         });
     }
@@ -813,7 +830,12 @@ public static class CampaignEndpoints
         var saved = await savedValues.ListAsync(ct);
         var paper = await PaperFor(template, forms, ct);
 
-        if (Unfillable(template, segment!, saved, paper is not null) is { } unfillable)
+        // Once, for the whole send, before the loop below. See AnswersFor: the
+        // alternative is a round trip per recipient inside the render, which is
+        // four hundred of them behind one button.
+        var answers = await AnswersFor(paper, resolved.Members, forms, resolver, ct);
+
+        if (Unfillable(template, segment!, saved, paper is not null, answers) is { } unfillable)
         {
             return Results.BadRequest(new { error = unfillable });
         }
@@ -823,14 +845,14 @@ public static class CampaignEndpoints
 
         var sendable = resolved.Members.Where(m => !suppressed.ContainsKey(m.Email)).ToList();
 
-        if (Missing(Covered(template, sendable, config, season, saved, paper)) is { } gap)
+        if (Missing(Covered(template, sendable, config, season, saved, paper, answers)) is { } gap)
         {
             return Results.BadRequest(new { error = gap });
         }
 
         var recipients = resolved.Members.Select(member =>
         {
-            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season, saved, paper));
+            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season, saved, paper, answers));
             return new BroadcastRecipient(
                 member.PersonId, member.Email,
                 rendered.Subject, rendered.BodyHtml, rendered.BodyText,
@@ -955,10 +977,11 @@ public static class CampaignEndpoints
         EmailTemplate template,
         Segment segment,
         IReadOnlyList<SavedValue> saved,
-        bool aboutAForm)
+        bool aboutAForm,
+        FormAnswers answers)
     {
         var wanted = TemplateRenderer.PlaceholdersIn(template);
-        var available = MergeFields.Fillable(segment, saved, aboutAForm);
+        var available = MergeFields.Fillable(segment, saved, aboutAForm, answers);
         var missing = wanted.Where(p => !available.Contains(p)).OrderBy(p => p, StringComparer.Ordinal).ToList();
 
         return missing.Count == 0
@@ -1052,6 +1075,72 @@ public static class CampaignEndpoints
         EmailTemplate? template, IFormStore forms, CancellationToken ct) =>
         template?.FormId is { } formId ? await forms.ByIdAsync(formId, ct) : null;
 
+    /// <summary>
+    /// The questions on that form whose answers a message may carry.
+    /// </summary>
+    /// <remarks>
+    /// The published version, because that is what is being answered now —
+    /// <see cref="MergeFields.QuestionsOn"/> decides which of its questions
+    /// become names and says why. Empty for a form nobody has published, which
+    /// still offers the <c>form.</c> group: a link and a name belong to the
+    /// form rather than to a version of it.
+    /// </remarks>
+    private static async Task<IReadOnlyList<AnswerQuestion>> QuestionsOn(
+        Form? paper, IFormStore forms, CancellationToken ct) =>
+        MergeFields.QuestionsOn(
+            paper, paper is null ? null : await forms.PublishedAsync(paper.Id, ct));
+
+    /// <summary>
+    /// What these recipients answered the form this template names.
+    /// </summary>
+    /// <remarks>
+    /// Called once per request, before anything iterates the recipients, and
+    /// that is the point of it. Resolving an answer inside the render loop is
+    /// the version somebody writes first — it reads perfectly, each lookup is a
+    /// millisecond, and a four-hundred-person broadcast becomes four hundred
+    /// round trips while an organizer watches a spinner. See
+    /// <see cref="ISegmentResolver.AnswersToAsync"/>, which is one statement
+    /// for the whole send.
+    /// <para>
+    /// Empty where the template names no form, names one that is gone, or names
+    /// one nobody has published. All three leave every answer placeholder
+    /// standing for the coverage check, which is the same treatment — and the
+    /// same reasoning — as <see cref="PaperFor"/>'s null.
+    /// </para>
+    /// </remarks>
+    /// <summary>
+    /// The names a template's form contributes, with nobody's answers behind
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// What <see cref="Unfillable"/> wants at draft time. That check asks
+    /// whether a name can ever be filled rather than whether anybody has
+    /// filled it — the second question is <see cref="Covered"/>'s, at preview
+    /// and at send — so reading several hundred people's answers to answer it
+    /// would be a scan of <c>applications.*</c> every time somebody saves a
+    /// draft.
+    /// </remarks>
+    private static async Task<FormAnswers> AskedOn(
+        EmailTemplate template, IFormStore forms, CancellationToken ct) =>
+        FormAnswers.Asked(await QuestionsOn(await PaperFor(template, forms, ct), forms, ct));
+
+    private static async Task<FormAnswers> AnswersFor(
+        Form? paper,
+        IReadOnlyList<SegmentMember> members,
+        IFormStore forms,
+        ISegmentResolver resolver,
+        CancellationToken ct)
+    {
+        if (paper is null)
+        {
+            return FormAnswers.None;
+        }
+
+        var questions = await QuestionsOn(paper, forms, ct);
+
+        return await resolver.AnswersToAsync(paper, questions, members, ct);
+    }
+
     private static async Task<EventDetail?> SeasonFor(
         Segment segment, IEventStore events, CancellationToken ct) =>
         segment is Segment.InStatus inStatus
@@ -1064,7 +1153,8 @@ public static class CampaignEndpoints
         IConfiguration config,
         EventDetail? season,
         IReadOnlyList<SavedValue> saved,
-        Form? paper)
+        Form? paper,
+        FormAnswers answers)
     {
         if (template is null)
         {
@@ -1079,7 +1169,7 @@ public static class CampaignEndpoints
 
         foreach (var member in members)
         {
-            var unfilled = MergeFields.Unfilled(wanted, member, config, season, saved, paper);
+            var unfilled = MergeFields.Unfilled(wanted, member, config, season, saved, paper, answers);
             if (unfilled.Count == 0)
             {
                 continue;
@@ -1161,7 +1251,8 @@ public static class CampaignEndpoints
         IConfiguration config,
         EventDetail? season,
         IReadOnlyList<SavedValue> saved,
-        Form? paper)
+        Form? paper,
+        FormAnswers answers)
     {
         if (template is null || members.Count == 0)
         {
@@ -1172,7 +1263,7 @@ public static class CampaignEndpoints
         var chosen = new List<SegmentMember>();
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (members.FirstOrDefault(m => MergeFields.Unfilled(wanted, m, config, season, saved, paper).Count > 0) is { } gapped)
+        if (members.FirstOrDefault(m => MergeFields.Unfilled(wanted, m, config, season, saved, paper, answers).Count > 0) is { } gapped)
         {
             chosen.Add(gapped);
             taken.Add(gapped.Email);
@@ -1193,7 +1284,7 @@ public static class CampaignEndpoints
 
         return chosen.Select(member =>
         {
-            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season, saved, paper));
+            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season, saved, paper, answers));
 
             return (object)new
             {
@@ -1205,7 +1296,7 @@ public static class CampaignEndpoints
                 // Named on the render as well as counted in the coverage, so a
                 // screen showing one message can mark the hole in it without
                 // cross-referencing a list beside it.
-                unfilled = MergeFields.Unfilled(wanted, member, config, season, saved, paper),
+                unfilled = MergeFields.Unfilled(wanted, member, config, season, saved, paper, answers),
             };
         }).ToList();
     }
