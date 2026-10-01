@@ -329,8 +329,7 @@ public class FormAnswerMergeTests(ApplicationsDatabase db)
         var eventId = await db.AddEventAsync();
         var form = await SurveyAsync(
             eventId,
-            Question("track", FieldType.Radio, "hardware") with { Label = "Which track?" },
-            Question("cv", FieldType.File));
+            Question("track", FieldType.Radio, "hardware") with { Label = "Which track?" });
 
         var offered = await PlaceholdersFor(form.Id, cookie);
 
@@ -341,8 +340,20 @@ public class FormAnswerMergeTests(ApplicationsDatabase db)
         // The upload is not offered, because what is stored is where the file
         // went. An upload id in a body is applications.resume_key leaving the
         // schema by another door.
+        //
+        // Asked of an application form rather than of the survey above, and
+        // that is not incidental: FormValidation refuses a file question on
+        // anything that is not an application, "because there is nowhere for
+        // the file to be remembered". A survey carrying one cannot be
+        // published, so a test that built one was asserting about a form that
+        // cannot exist.
+        var (application, _) = await ApplicationFormAsync(
+            eventId, Question("cv", FieldType.File));
+
         Assert.DoesNotContain(
-            offered.Select(p => p.GetProperty("name").GetString()), name => name == "form.answer.cv");
+            (await PlaceholdersFor(application.Id, cookie))
+                .Select(p => p.GetProperty("name").GetString()),
+            name => name == "form.answer.cv");
 
         // And nothing is offered at all without a form named, which is the
         // narrowing the form group already had.
