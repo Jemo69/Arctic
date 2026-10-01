@@ -29,7 +29,7 @@ public sealed class TemplateCatalog(NpgsqlDataSource dataSource)
     private const string Columns = """
         id, key, kind, subject, body_format, body_markdown, body_html, body_text,
         from_local, from_domain, reply_to, version, created_at, created_by,
-        from_name, preview_text, click_tracking, name
+        from_name, preview_text, click_tracking, name, form_id
         """;
 
     /// <summary>
@@ -86,10 +86,10 @@ public sealed class TemplateCatalog(NpgsqlDataSource dataSource)
             INSERT INTO notify.templates
                 (key, kind, subject, body_format, body_markdown, body_html,
                  body_text, from_local, from_domain, reply_to, version, created_by,
-                 from_name, preview_text, click_tracking, name)
+                 from_name, preview_text, click_tracking, name, form_id)
             VALUES (@key, @kind, @subject, @format, @source, @html,
                     @text, @fromLocal, @fromDomain, @replyTo, 1, @author,
-                    @fromName, @previewText, @clickTracking, @name)
+                    @fromName, @previewText, @clickTracking, @name, @formId)
             RETURNING {Columns}
             """;
 
@@ -191,10 +191,10 @@ public sealed class TemplateCatalog(NpgsqlDataSource dataSource)
             INSERT INTO notify.templates
                 (key, kind, subject, body_format, body_markdown, body_html,
                  body_text, from_local, from_domain, reply_to, version, created_by,
-                 from_name, preview_text, click_tracking, name)
+                 from_name, preview_text, click_tracking, name, form_id)
             VALUES (@key, @kind, @subject, @format, @source, @html,
                     @text, @fromLocal, @fromDomain, @replyTo, @version, @author,
-                    @fromName, @previewText, @clickTracking, @name)
+                    @fromName, @previewText, @clickTracking, @name, @formId)
             RETURNING {Columns}
             """,
             connection,
@@ -268,6 +268,7 @@ public sealed class TemplateCatalog(NpgsqlDataSource dataSource)
         cmd.Parameters.AddWithValue("previewText", (object?)draft.PreviewText ?? DBNull.Value);
         cmd.Parameters.AddWithValue("clickTracking", draft.ClickTracking);
         cmd.Parameters.AddWithValue("name", (object?)draft.Name ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("formId", (object?)draft.FormId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("author", author);
     }
 
@@ -289,5 +290,6 @@ public sealed class TemplateCatalog(NpgsqlDataSource dataSource)
         reader.IsDBNull(14) ? null : reader.GetString(14),
         reader.IsDBNull(15) ? null : reader.GetString(15),
         reader.GetBoolean(16),
-        reader.IsDBNull(17) ? null : reader.GetString(17));
+        reader.IsDBNull(17) ? null : reader.GetString(17),
+        reader.IsDBNull(18) ? null : reader.GetGuid(18));
 }

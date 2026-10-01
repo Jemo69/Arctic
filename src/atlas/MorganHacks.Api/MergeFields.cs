@@ -6,6 +6,10 @@ using MorganHacks.Applications.Services;
 using MorganHacks.Lark.Data.Data;
 using MorganHacks.Lark.Data.Domain;
 
+// Just the type, not the namespace: Forms and Segments each declare a
+// ColumnKind, and importing both makes every use of it ambiguous.
+using Form = MorganHacks.Applications.Forms.Form;
+
 namespace MorganHacks.Api;
 
 /// <summary>
@@ -60,6 +64,7 @@ public static class MergeFields
     {
         public const string Applicant = "About the person";
         public const string Event = "The event";
+        public const string Form = "The form";
         public const string Links = "Links";
         public const string Saved = "Saved values";
     }
@@ -172,6 +177,33 @@ public static class MergeFields
             e => e.Capacity?.ToString(CultureInfo.InvariantCulture)),
     ];
 
+    /// <summary>
+    /// The form this email is about, where a template names one.
+    /// </summary>
+    /// <remarks>
+    /// Three fields and no more. There is no <c>opensAt</c> because
+    /// <c>applications.forms</c> has no such column — a form is reachable from
+    /// the moment it is published, and the only date it carries is the one it
+    /// closes on.
+    /// <para>
+    /// The link is built rather than stored, from the forms origin and the
+    /// form's own code, so it is right in each environment for the same reason
+    /// <see cref="Links"/> is. A share URL typed into a template body is a
+    /// production URL on staging.
+    /// </para>
+    /// </remarks>
+    private static readonly (string Name, string Description, Func<Form, IConfiguration, string?> Value)[] Paper =
+    [
+        ("form.link", "The link somebody opens to fill the form in.",
+            (form, config) => $"{Origins.Forms(config)}/{form.Code}"),
+
+        ("form.name", "The form's name, as the console spells it.",
+            (form, _) => string.IsNullOrWhiteSpace(form.Name) ? null : form.Name),
+
+        ("form.closesAt", "When the form stops accepting answers.",
+            (form, _) => Moment(form.ClosesAt)),
+    ];
+
     /// <summary>A date as a person reads it, or null for one nobody has set.</summary>
     private static string? Moment(DateTimeOffset? instant) =>
         instant is { } set ? EventZone.Readable(set) : null;
@@ -195,9 +227,10 @@ public static class MergeFields
     /// goes through here; <see cref="All"/> remains what the declaration
     /// alone knows, which is what the schema test compares.
     /// </remarks>
-    public static IReadOnlyList<MergeField> Including(IEnumerable<SavedValue> saved) =>
+    public static IReadOnlyList<MergeField> Including(
+        IEnumerable<SavedValue> saved, bool aboutAForm = false) =>
     [
-        .. All,
+        .. aboutAForm ? All : All.Where(field => field.Group != Groups.Form),
         .. saved.Select(value => new MergeField(
             SavedPrefix + value.Name,
             Groups.Saved,
@@ -217,6 +250,9 @@ public static class MergeFields
 
         .. Season.Select(field => new MergeField(
             field.Name, Groups.Event, field.Description, OnAddressLists: true)),
+
+        .. Paper.Select(field => new MergeField(
+            field.Name, Groups.Form, field.Description, OnAddressLists: true)),
 
         .. Links.Select(link => new MergeField(
             link.Name, Groups.Links, link.Description, OnAddressLists: true)),
@@ -260,7 +296,8 @@ public static class MergeFields
         SegmentMember member,
         IConfiguration config,
         EventDetail? season = null,
-        IReadOnlyList<SavedValue>? saved = null)
+        IReadOnlyList<SavedValue>? saved = null,
+        Form? paper = null)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -271,6 +308,21 @@ public static class MergeFields
         foreach (var link in Links)
         {
             values[link.Name] = link.Value(config);
+        }
+
+        // Null where the template names no form, or names one that has since
+        // been deleted or removed. Every form placeholder then stands and the
+        // coverage check refuses the send, which is the right failure: a dead
+        // link inside an approved broadcast is worse than one that will not go.
+        if (paper is not null)
+        {
+            foreach (var field in Paper)
+            {
+                if (field.Value(paper, config) is { } value)
+                {
+                    values[field.Name] = value;
+                }
+            }
         }
 
         foreach (var value in saved ?? [])
@@ -349,20 +401,31 @@ public static class MergeFields
 
     /// <summary>The placeholders a segment can fill for everybody in it.</summary>
     public static IReadOnlySet<string> Fillable(
-        Segment segment, IReadOnlyList<SavedValue>? saved = null) =>
+        Segment segment,
+        IReadOnlyList<SavedValue>? saved = null,
+        bool aboutAForm = false) =>
         new HashSet<string>(
-            For(segment, saved).Select(field => field.Name), StringComparer.Ordinal);
+            For(segment, saved, aboutAForm).Select(field => field.Name),
+            StringComparer.Ordinal);
 
     /// <summary>The fields a segment can fill, described for the editor.</summary>
     /// <remarks>
     /// Narrowed rather than annotated. A list that offered <c>{{firstName}}</c>
     /// beside a note saying this segment cannot fill it is a list somebody
     /// clicks anyway.
+    /// <para>
+    /// <paramref name="aboutAForm"/> is the same argument one level up. A
+    /// template that names no form cannot fill <c>{{form.link}}</c>, so it is
+    /// not offered — rather than offered and then refused at send by somebody
+    /// who did not write it.
+    /// </para>
     /// </remarks>
     public static IEnumerable<MergeField> For(
-        Segment segment, IReadOnlyList<SavedValue>? saved = null)
+        Segment segment,
+        IReadOnlyList<SavedValue>? saved = null,
+        bool aboutAForm = false)
     {
-        var catalogue = saved is null ? All : Including(saved);
+        var catalogue = Including(saved ?? [], aboutAForm);
 
         return segment is Segment.Addresses
             ? catalogue.Where(field => field.OnAddressLists)
@@ -382,7 +445,8 @@ public static class MergeFields
         SegmentMember member,
         IConfiguration config,
         EventDetail? season = null,
-        IReadOnlyList<SavedValue>? saved = null)
+        IReadOnlyList<SavedValue>? saved = null,
+        Form? paper = null)
     {
         var values = Values(member, config, season, saved);
 

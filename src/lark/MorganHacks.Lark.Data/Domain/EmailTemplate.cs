@@ -17,7 +17,18 @@ public sealed record EmailTemplate(
     string? ReplyTo,
     string? FromName = null,
     string? PreviewText = null,
-    bool ClickTracking = false)
+    bool ClickTracking = false,
+
+    /// <summary>
+    /// The form this email is about, where it is about one.
+    /// </summary>
+    /// <remarks>
+    /// An id rather than the form, because this record is read on every send
+    /// and almost no template names a form. The id is what the campaign
+    /// resolves once, next to the event, so a template that mentions no form
+    /// costs no lookup.
+    /// </remarks>
+    Guid? FormId = null)
 {
     /// <summary>Transactional sends jump the queue; broadcasts wait behind them.</summary>
     public bool IsTransactional => Kind == "transactional";

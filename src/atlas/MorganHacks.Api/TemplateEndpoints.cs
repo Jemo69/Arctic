@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using MorganHacks.Identity.Domain;
+using MorganHacks.Applications.Forms;
 using MorganHacks.Lark.Data.Data;
 using MorganHacks.Lark.Data.Domain;
 using MorganHacks.Observability;
@@ -166,7 +167,18 @@ public static partial class TemplateEndpoints
         string? FromName,
         string? PreviewText = null,
         bool ClickTracking = false,
-        string? Name = null);
+        string? Name = null,
+
+        /// <summary>
+        /// The form this email is about, where it is about one.
+        /// </summary>
+        /// <remarks>
+        /// Checked against <c>applications.forms</c> before it is written, so
+        /// a template cannot be bound to a form that was never there. The
+        /// foreign key would refuse it anyway; doing it here is what turns a
+        /// 500 into a sentence naming the form.
+        /// </remarks>
+        Guid? FormId = null);
 
     /// <summary>
     /// The body <see cref="Preview"/> takes.
@@ -266,12 +278,27 @@ public static partial class TemplateEndpoints
     /// <see cref="CampaignEndpoints"/>' route, where the segment is.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// <c>?template=</c> is optional and names the template being edited. With
+    /// it, the form group is offered only when that template actually names a
+    /// form; without it the answer is the same list every template can fill,
+    /// which is what a new template gets before it has a key.
+    /// </remarks>
     private static async Task<IResult> Placeholders(
-        SavedValueStore savedValues, CancellationToken ct) => Results.Ok(new
+        string? template,
+        TemplateStore templates,
+        SavedValueStore savedValues,
+        CancellationToken ct)
+    {
+        var aboutAForm = !string.IsNullOrWhiteSpace(template)
+            && (await templates.FindAsync(template, ct))?.FormId is not null;
+
+        return Results.Ok(new
         {
-            placeholders = MergeFields.Including(await savedValues.ListAsync(ct))
+            placeholders = MergeFields.Including(await savedValues.ListAsync(ct), aboutAForm)
                 .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
         });
+    }
 
     // ------------------------------------------------------------- writing ---
 
@@ -292,6 +319,7 @@ public static partial class TemplateEndpoints
         HttpContext http,
         TemplateCatalog templates,
         TemplateDraftStore drafts,
+        IFormStore forms,
         ILogger<TemplateRequest> log,
         CancellationToken ct)
     {
@@ -304,6 +332,11 @@ public static partial class TemplateEndpoints
         if (key.Length > MaxKeyLength || !Key.IsMatch(key))
         {
             return Results.BadRequest(new { error = BadKey });
+        }
+
+        if (await UnknownForm(request, forms, ct) is { } noSuchForm)
+        {
+            return Results.BadRequest(new { error = noSuchForm });
         }
 
         if (!TryDraft(request, key, out var draft, out var refusal))
@@ -355,6 +388,7 @@ public static partial class TemplateEndpoints
         HttpContext http,
         TemplateCatalog templates,
         TemplateDraftStore drafts,
+        IFormStore forms,
         ILogger<TemplateRequest> log,
         CancellationToken ct)
     {
@@ -366,6 +400,11 @@ public static partial class TemplateEndpoints
                 error = "A template's key cannot be changed. Create a new template "
                         + "with the key you want.",
             });
+        }
+
+        if (await UnknownForm(request, forms, ct) is { } noSuchForm)
+        {
+            return Results.BadRequest(new { error = noSuchForm });
         }
 
         if (!TryDraft(request, key, out var draft, out var refusal))
@@ -512,6 +551,30 @@ public static partial class TemplateEndpoints
     /// not re-saved — or the other way round — would be a template somebody can
     /// get stuck inside.
     /// </remarks>
+    /// <summary>
+    /// Why the named form cannot be bound, or null when there is nothing to
+    /// object to.
+    /// </summary>
+    /// <remarks>
+    /// The foreign key would refuse a missing id on its own, and would do it
+    /// as a 500 at the moment somebody pressed save. This turns that into a
+    /// sentence, before the write, naming the thing that is wrong — and it
+    /// also catches a form that <c>0038</c> removed, which the foreign key
+    /// cannot see because the row is still there.
+    /// </remarks>
+    private static async Task<string?> UnknownForm(
+        TemplateRequest? request, IFormStore forms, CancellationToken ct)
+    {
+        if (request?.FormId is not { } formId)
+        {
+            return null;
+        }
+
+        return await forms.ByIdAsync(formId, ct) is null
+            ? "That form no longer exists. Choose another, or none."
+            : null;
+    }
+
     private static bool TryDraft(
         TemplateRequest? request, string key, out TemplateDraft? draft, out string? refusal,
         bool settingsOnly = false)
@@ -644,7 +707,7 @@ public static partial class TemplateEndpoints
         draft = new TemplateDraft(
             key, kind, subject, format, source, html, text, fromLocal, fromDomain,
             replyTo, fromName, string.IsNullOrEmpty(previewText) ? null : previewText,
-            request?.ClickTracking ?? false, name);
+            request?.ClickTracking ?? false, name, request?.FormId);
         return true;
     }
 
@@ -845,6 +908,11 @@ public static partial class TemplateEndpoints
         body = template.Source,
         previewText = template.PreviewText,
         clickTracking = template.ClickTracking,
+
+        // So the editor can show which form is bound and offer the form group
+        // only when one is. Without it the console would have to guess from
+        // whether a form placeholder happens to be in the body.
+        formId = template.FormId,
         markdown = template.Format == TemplateBody.Html ? null : template.Source,
         html = template.Html,
         text = template.Text,
