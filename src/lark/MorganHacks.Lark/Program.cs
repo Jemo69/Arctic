@@ -34,12 +34,37 @@ builder.Services.Configure<SendLoopOptions>(builder.Configuration.GetSection("Se
 var awsRegion = builder.Configuration["AWS_REGION"]
                 ?? Environment.GetEnvironmentVariable("AWS_REGION");
 
+// Which configuration set each send is tagged with, and therefore whether
+// SES reports anything back about it. Optional for the same reason the region
+// is checked rather than assumed: a worker that refuses to start because event
+// publishing is not set up yet is worse than one that sends without it.
+//
+// The cost of leaving it unset is not nothing, and is worth saying out loud —
+// bounces and complaints never arrive, so notify.suppressions stays empty of
+// real ones and every message stops at 'sent'. See docs/runbooks.
+var sesConfigurationSet = builder.Configuration["SES_CONFIGURATION_SET"]
+                          ?? Environment.GetEnvironmentVariable("SES_CONFIGURATION_SET");
+
 if (!string.IsNullOrWhiteSpace(awsRegion))
 {
     builder.Services.AddSingleton<IAmazonSimpleEmailServiceV2>(
         _ => new AmazonSimpleEmailServiceV2Client(
             Amazon.RegionEndpoint.GetBySystemName(awsRegion)));
-    builder.Services.AddSingleton<IEmailProvider, SesEmailProvider>();
+
+    builder.Services.AddSingleton<IEmailProvider>(sp => new SesEmailProvider(
+        sp.GetRequiredService<IAmazonSimpleEmailServiceV2>(),
+        sp.GetRequiredService<ILogger<SesEmailProvider>>(),
+        string.IsNullOrWhiteSpace(sesConfigurationSet) ? null : sesConfigurationSet.Trim()));
+
+    if (string.IsNullOrWhiteSpace(sesConfigurationSet))
+    {
+        // Loud once at startup rather than silent forever. The symptom
+        // otherwise is every message sitting at 'sent' and nobody wondering
+        // why none ever reaches 'delivered'.
+        Console.WriteLine(
+            "SES_CONFIGURATION_SET is not set, so SES will report no bounces, "
+            + "complaints or deliveries and addresses will not be suppressed.");
+    }
 }
 else
 {

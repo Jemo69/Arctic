@@ -21,7 +21,8 @@ namespace MorganHacks.Lark.Sending;
 /// </remarks>
 public sealed class SesEmailProvider(
     IAmazonSimpleEmailServiceV2 ses,
-    ILogger<SesEmailProvider> log) : IEmailProvider
+    ILogger<SesEmailProvider> log,
+    string? configurationSet = null) : IEmailProvider
 {
     public bool IsConfigured => true;
 
@@ -30,6 +31,17 @@ public sealed class SesEmailProvider(
     {
         var request = new SendEmailRequest
         {
+            // Naming the set is what makes SES publish anything about this
+            // message afterwards. Without it a send is accepted and then
+            // silent: the bounce, the complaint and the delivery all happen
+            // and none of them are reported, so every row stops at 'sent' and
+            // notify.suppressions never learns about a dead address.
+            //
+            // Null when unconfigured, and the SDK then omits the field rather
+            // than sending an empty one — which SES rejects. A deployment
+            // without the variable sends exactly as it did before.
+            ConfigurationSetName = configurationSet,
+
             FromEmailAddress = message.From,
             Destination = new Destination { ToAddresses = [message.ToEmail] },
             Content = new EmailContent

@@ -32,6 +32,12 @@ than crash-looping on a missing variable — which is what it used to do.
 ''')
 param awsRegion string = ''
 
+// Which SES configuration set each send is tagged with. Without one SES
+// publishes no bounce, complaint or delivery events, so notify.suppressions
+// never learns about a dead address and every message stops at 'sent'.
+// Empty is allowed and degrades to exactly the old behaviour.
+param sesConfigurationSet string = ''
+
 @secure()
 param awsAccessKeyId string = ''
 
@@ -195,11 +201,15 @@ var awsSecrets = hasAws ? [
   }
 ] : []
 
-var awsEnv = hasAws ? [
+var awsEnv = hasAws ? concat([
   { name: 'AWS_REGION', value: awsRegion }
   { name: 'AWS_ACCESS_KEY_ID', secretRef: 'aws-access-key-id' }
   { name: 'AWS_SECRET_ACCESS_KEY', secretRef: 'aws-secret-access-key' }
-] : []
+], empty(sesConfigurationSet) ? [] : [
+  // Plain value rather than a secret: it is the name of a configuration set,
+  // which is not one.
+  { name: 'SES_CONFIGURATION_SET', value: sesConfigurationSet }
+]) : []
 
 // Absent rather than blank, like the others: Container Apps rejects a secret
 // with an empty value.
