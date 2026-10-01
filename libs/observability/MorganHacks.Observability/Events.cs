@@ -188,6 +188,76 @@ public static class Events
     /// <summary>An address was added to the suppression list.</summary>
     public const string AddressSuppressed = "address.suppressed";
 
+    /// <summary>
+    /// An email went out because something happened, with nobody watching.
+    /// </summary>
+    /// <remarks>
+    /// The one kind of mail this system sends that no person pressed send on.
+    /// A sign-in link follows somebody asking for one and a broadcast follows
+    /// an approver; this follows a decision, and the first human to read the
+    /// result is the applicant.
+    /// <para>
+    /// Watched for its absence against
+    /// <see cref="ApplicationStatusChanged"/>, which is the pairing that makes
+    /// it worth having a name at all. Decisions being made while this stays at
+    /// zero is four hundred people who were accepted and never told: every
+    /// service up, nothing erroring, and the only symptom a quiet inbox.
+    /// </para>
+    /// <para>
+    /// Carries the trigger id, the template key and the application id. Never
+    /// the address and never the subject — the queue row holds both, behind a
+    /// permission, where a log line is not.
+    /// </para>
+    /// </remarks>
+    public const string TriggeredEmailQueued = "triggered_email.queued";
+
+    /// <summary>
+    /// Something happened that should have sent mail, and did not.
+    /// </summary>
+    /// <remarks>
+    /// Every refusal and every fault on that path, under one name: a binding
+    /// pointing at a template somebody deleted, an address that has already
+    /// hard-bounced, a database that was unreachable for the half-second after
+    /// the decision committed. One name rather than five because the question
+    /// an alert asks is the same for all of them — somebody was decided about
+    /// and not told — and the line itself says which.
+    /// <para>
+    /// This is the half of the "a failed send must not fail the decision"
+    /// trade that somebody can act on. The status change has already
+    /// committed by the time this is written, so the mail is genuinely owed
+    /// and nothing will retry it: the ledger in
+    /// <c>notify.email_trigger_sends</c> only records sends that happened, so
+    /// the occurrence is still unclaimed and re-reaching the status would fire
+    /// properly — but nothing re-reaches a status on its own.
+    /// </para>
+    /// <para>
+    /// Worth alerting on by volume rather than by absence, unlike most of this
+    /// file. A handful across a season is suppressed addresses doing their
+    /// job; a run of them within a minute is a template that has been deleted
+    /// out from under a live automation.
+    /// </para>
+    /// </remarks>
+    public const string TriggeredEmailDropped = "triggered_email.dropped";
+
+    /// <summary>
+    /// An occasion fired again and was refused, because it had already been
+    /// mailed.
+    /// </summary>
+    /// <remarks>
+    /// Not a fault. A double-tapped Accept, a console retrying a request whose
+    /// response never arrived, and a reviewer moving somebody from accepted to
+    /// expired and back all land here, and all three are the uniqueness
+    /// constraint in <c>0049</c> working.
+    /// <para>
+    /// Named anyway, because the rate is a signal nothing else carries. A few
+    /// of these on the evening decisions go out is people clicking; a steady
+    /// stream of them is something replaying status changes, and the first
+    /// place that would show up is here rather than in anything that looks
+    /// like an error.
+    /// </para>
+    /// </remarks>
+    public const string TriggeredEmailSkipped = "triggered_email.skipped";
+
     /// <summary>A broadcast was drafted. Nobody has been mailed.</summary>
     public const string CampaignCreated = "campaign.created";
 

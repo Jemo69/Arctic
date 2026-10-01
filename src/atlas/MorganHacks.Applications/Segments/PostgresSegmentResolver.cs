@@ -53,6 +53,37 @@ public sealed class PostgresSegmentResolver(NpgsqlDataSource dataSource) : ISegm
         };
 
     /// <summary>
+    /// One application, read exactly as a segment reads it.
+    /// </summary>
+    /// <remarks>
+    /// The same select list and the same reader as everything else here, which
+    /// is the only reason this method is allowed to exist — see
+    /// <see cref="ISegmentResolver.MemberOfAsync"/> for why a second place
+    /// building a <see cref="SegmentMember"/> would be a second list of
+    /// columns to keep in step.
+    /// <para>
+    /// No limit and no overflow check. One id is one row by primary key, so
+    /// the reasoning <see cref="Segment.MaxRecipients"/> exists for has
+    /// nothing to apply to.
+    /// </para>
+    /// </remarks>
+    public async Task<SegmentMember?> MemberOfAsync(
+        Guid applicationId, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT {Selected}
+              FROM applications.applications a
+             WHERE a.id = @applicationId
+            """;
+
+        await using var cmd = dataSource.CreateCommand(sql);
+        cmd.Parameters.AddWithValue("applicationId", applicationId);
+
+        var resolved = await ReadAsync(cmd, ct);
+        return resolved.Members.Count == 1 ? resolved.Members[0] : null;
+    }
+
+    /// <summary>
     /// Everyone on one event whose application is in one of these states.
     /// </summary>
     /// <remarks>

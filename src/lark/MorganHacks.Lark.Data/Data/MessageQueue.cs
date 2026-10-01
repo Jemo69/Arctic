@@ -32,10 +32,50 @@ public sealed class MessageQueue(NpgsqlDataSource dataSource)
         string? correlationId = null,
         CancellationToken ct = default)
     {
-        var rendered = TemplateRenderer.Render(template, values);
-
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
+
+        var messageId = await EnqueueTransactionalAsync(
+            connection, transaction, template, toEmail, personId, values, correlationId, ct);
+
+        await transaction.CommitAsync(ct);
+        return messageId;
+    }
+
+    /// <summary>
+    /// The same thing, inside a transaction the caller owns and commits.
+    /// </summary>
+    /// <remarks>
+    /// For the one caller that has something else to write atomically with the
+    /// message. <see cref="TriggerStore"/> claims a row in
+    /// <c>notify.email_trigger_sends</c> alongside this, and the two have to
+    /// commit together or neither does: a claim without a message is an email
+    /// silently dropped and never reconsidered, and a message without a claim
+    /// is the second acceptance letter the claim exists to prevent.
+    /// <para>
+    /// An overload rather than a second copy of the statements. Two places
+    /// inserting into <c>notify.messages</c> would agree about priority,
+    /// correlation id and the three rendered columns right up until one of them
+    /// was changed, and the failure of that is mail that renders differently
+    /// depending on which path queued it.
+    /// </para>
+    /// <para>
+    /// Nothing is committed here. The caller decides, which is the whole
+    /// reason this overload exists — and a rollback after this returns is a
+    /// supported outcome rather than an error path.
+    /// </para>
+    /// </remarks>
+    public async Task<Guid> EnqueueTransactionalAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        EmailTemplate template,
+        string toEmail,
+        Guid? personId,
+        IReadOnlyDictionary<string, string> values,
+        string? correlationId = null,
+        CancellationToken ct = default)
+    {
+        var rendered = TemplateRenderer.Render(template, values);
 
         Guid campaignId;
         const string campaign = """
@@ -73,7 +113,6 @@ public sealed class MessageQueue(NpgsqlDataSource dataSource)
             messageId = (Guid)(await cmd.ExecuteScalarAsync(ct))!;
         }
 
-        await transaction.CommitAsync(ct);
         return messageId;
     }
 

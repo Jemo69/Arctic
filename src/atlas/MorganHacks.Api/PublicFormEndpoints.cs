@@ -502,6 +502,15 @@ public static class PublicFormEndpoints
     /// browser is told what to render by the same published version, but a
     /// caller can send anything at all — so a field list that arrived with the
     /// answers would be a claim validating itself.
+    /// <para>
+    /// <b>The confirmation email, where an organizer has set one up, is sent
+    /// after the row is written.</b> Only on the application path:
+    /// <see cref="TriggeredEmails.FormSubmittedAsync"/> says why a gated form
+    /// and an anonymous one are deliberately not included. Nothing about it
+    /// can fail the submission — an applicant who filled the form in and was
+    /// told it did not save would fill it in again, and the unique index would
+    /// then tell them they had already applied.
+    /// </para>
     /// </remarks>
     private static async Task<IResult> Submit(
         string code,
@@ -512,6 +521,7 @@ public static class PublicFormEndpoints
         IRespondentStore respondents,
         IAnonymousSubmissionStore anonymous,
         SessionService sessions,
+        TriggeredEmails triggered,
         IConfiguration config,
         IMemoryCache cache,
         TimeProvider clock,
@@ -575,6 +585,16 @@ public static class PublicFormEndpoints
             log.LogInformation(
                 "Application submitted. {code} {applicationId} {event}",
                 form.Code, id, Events.ApplicationSubmitted);
+
+            // The application id rather than the submission key, and that is
+            // the dedupe story on this path. The key collapses retries of one
+            // attempt on an anonymous survey; here the application row is the
+            // occurrence, and the unique index on (event_id, lower(email))
+            // already means one per person — so a double tap on a slow phone
+            // reaches the catch below rather than this line, and a retry of a
+            // request whose response was lost reaches it and is refused by the
+            // ledger.
+            await triggered.FormSubmittedAsync(form.Id, id, ct);
 
             return Results.Ok(new { submitted = true });
         }

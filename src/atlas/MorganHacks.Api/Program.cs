@@ -103,6 +103,17 @@ builder.Services.AddSingleton<TemplateTestQueue>();
 // everybody, and they have opposite risks.
 builder.Services.AddSingleton<CampaignStore>();
 
+// The bindings that say which email follows which decision, and the ledger of
+// which ones have already gone out. In lark's data project like the rest of
+// notify.*, and a singleton for the same reason the stores above are: it holds
+// nothing but the data source and the queue.
+builder.Services.AddSingleton<TriggerStore>();
+
+// And the thing that acts on them. Scoped rather than a singleton because it
+// reads the correlation id off the current request through
+// IHttpContextAccessor, like QueuedEmailSender beside it.
+builder.Services.AddScoped<TriggeredEmails>();
+
 // Who a segment currently means. In Applications because it reads
 // applications.*, and re-run on every preview and every send because the
 // answer is different every day of registration week — which is why the
@@ -383,6 +394,7 @@ app.MapEmailTracking();
 app.MapEmailUnsubscribe();
 app.MapCampaigns();
 app.MapSavedValues();
+app.MapEmailTriggers();
 app.MapSesWebhook();
 
 // Only here. Deployed environments are Staging or Production, set explicitly on

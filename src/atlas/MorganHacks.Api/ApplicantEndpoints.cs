@@ -326,12 +326,25 @@ public static class ApplicantEndpoints
     /// filling it in would make a single decision indistinguishable from one
     /// of four hundred when somebody comes to undo the four hundred.
     /// </para>
+    /// <para>
+    /// <b>The email is a consequence, and is sent after the decision has
+    /// committed.</b> <see cref="TriggeredEmails"/> never throws, so a
+    /// provider outage, a deleted template or an address that has already
+    /// hard-bounced cannot turn a decision into a 500 — which matters because
+    /// the reviewer's next action is to move on to the next row believing this
+    /// one is decided. The other half of that trade is that a dropped email is
+    /// loud rather than silent: see
+    /// <see cref="Events.TriggeredEmailDropped"/>. Sending it before the
+    /// transition, or inside it, would mean mailing somebody about a decision
+    /// the lifecycle then refused.
+    /// </para>
     /// </remarks>
     private static async Task<IResult> ChangeStatus(
         Guid id,
         StatusRequest? request,
         HttpContext http,
         IApplicationStore applications,
+        TriggeredEmails triggered,
         ILogger<Applicant> log,
         CancellationToken ct)
     {
@@ -384,6 +397,14 @@ public static class ApplicantEndpoints
             "An application changed status. {actor} {applicationId} {from} {to} {event}",
             http.PersonId(), id, change.From?.ToWire(), change.To.ToWire(),
             Events.ApplicationStatusChanged);
+
+        // After the write and after the log line, because the decision and its
+        // record are the facts and this is what follows from them. Awaited
+        // rather than fired and forgotten: the response saying the status
+        // changed should not arrive before the mail has at least reached the
+        // queue, or a console that immediately re-reads the row would be
+        // racing a send it cannot see.
+        await triggered.StatusReachedAsync(id, change.To, ct);
 
         return Results.Ok(new
         {
@@ -681,20 +702,8 @@ public static class ApplicantEndpoints
     /// unrecognised value really is something to stop on.
     /// </para>
     /// </remarks>
-    private static bool TryStatus(string? value, out ApplicationStatus status)
-    {
-        foreach (var candidate in Enum.GetValues<ApplicationStatus>())
-        {
-            if (candidate.ToWire() == value)
-            {
-                status = candidate;
-                return true;
-            }
-        }
-
-        status = default;
-        return false;
-    }
+    private static bool TryStatus(string? value, out ApplicationStatus status) =>
+        ApplicationStatuses.TryParse(value, out status);
 
     /// <summary>Reads a repeated <c>?status=</c> filter, or refuses.</summary>
     private static bool TryStatuses(

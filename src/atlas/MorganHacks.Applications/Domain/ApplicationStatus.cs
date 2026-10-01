@@ -66,6 +66,38 @@ public static class ApplicationStatuses
     /// treating it as <c>Incomplete</c> would mean deciding somebody's
     /// application on a value we did not understand.
     /// </remarks>
+    /// <summary>
+    /// Reads a stored status back, without throwing.
+    /// </summary>
+    /// <remarks>
+    /// For the places the string arrived from outside — a query parameter, a
+    /// request body, a trigger an organizer configured — where an unrecognised
+    /// value is a caller to answer rather than a fault to raise.
+    /// <see cref="Parse"/> stays the one for reading our own column, where an
+    /// unknown value really is something to stop on.
+    /// <para>
+    /// Here rather than copied into each endpoint, which is how it was: two
+    /// handlers had a private loop over <see cref="Enum.GetValues{TEnum}"/>
+    /// comparing <see cref="ToWire"/>, and a third was about to. Three copies
+    /// of one mapping is three chances for one of them to accept a spelling
+    /// the column does not.
+    /// </para>
+    /// </remarks>
+    public static bool TryParse(string? wire, out ApplicationStatus status)
+    {
+        foreach (var candidate in Enum.GetValues<ApplicationStatus>())
+        {
+            if (candidate.ToWire() == wire)
+            {
+                status = candidate;
+                return true;
+            }
+        }
+
+        status = default;
+        return false;
+    }
+
     public static ApplicationStatus Parse(string wire) => wire switch
     {
         "incomplete" => ApplicationStatus.Incomplete,

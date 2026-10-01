@@ -75,4 +75,35 @@ public sealed record ResolvedSegment(
 public interface ISegmentResolver
 {
     Task<ResolvedSegment> ResolveAsync(Segment segment, CancellationToken ct = default);
+
+    /// <summary>
+    /// One application as a merge source, by id.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in the mail, because the only honest way to fill
+    /// <c>{{firstName}}</c> for one person is to read the same columns a
+    /// segment reads, in the same way, and decide nothing extra. A triggered
+    /// email could get a member by resolving
+    /// <see cref="Segment.InStatus"/> over the whole event and picking the
+    /// matching row out of it, which is correct and absurd: four hundred rows
+    /// and a dictionary lookup to greet one applicant, four hundred times on
+    /// the evening decisions go out.
+    /// <para>
+    /// It is on this interface rather than on <c>IApplicantStore</c> for the
+    /// reason <see cref="SegmentMember"/> gives about not being a way to read
+    /// an application: the columns are exactly
+    /// <see cref="ApplicantColumns.Mergeable"/> and nothing else, and keeping
+    /// that promise in one class is what makes it a promise. A method
+    /// somewhere else returning the same record would be a second list of
+    /// columns to keep in step, and the way that fails is a withheld column
+    /// becoming mailable because somebody typed it out.
+    /// </para>
+    /// <para>
+    /// Null for an id that names no application, which a caller acting on a
+    /// row it has just written should never see — and which is still worth
+    /// being an answer rather than an exception, because the alternative is a
+    /// failed send turning into a failed decision.
+    /// </para>
+    /// </remarks>
+    Task<SegmentMember?> MemberOfAsync(Guid applicationId, CancellationToken ct = default);
 }
