@@ -78,12 +78,56 @@ public static class AnswerQuestions
                       Unmatchable(isApplicationForm, field)))];
 
     /// <summary>
+    /// Whether this question's answer is kept with the rest of the form's
+    /// answers, which is the only place anything reading them back will look.
+    /// </summary>
+    /// <remarks>
+    /// A fact about where the value ended up, and the one place that decides
+    /// it. Two things ask: <see cref="Unmatchable"/>, which turns a no into a
+    /// sentence for the audience picker, and the mail's placeholder catalogue,
+    /// which turns a no into a name it simply does not offer. Narrowing rather
+    /// than annotating is <c>MergeFields.For</c>'s rule and the reason this
+    /// hands back a bool rather than prose.
+    /// <list type="bullet">
+    /// <item>An upload stores <em>where the file is</em> and not an answer.
+    /// There is no value to match on and none to put in a sentence —
+    /// <c>applications.resume_key</c> is withheld from the mail by name for
+    /// exactly that reason, and an upload id is the same string under a
+    /// different column.</item>
+    /// <item>An answer promoted to a column is not in the jsonb at all:
+    /// <c>PostgresSubmissionStore</c> writes it to the column instead and not
+    /// to both. Only on an application form — every other kind keeps all of
+    /// its answers in <c>form_submissions.answers</c> whatever the question
+    /// says about a column.</item>
+    /// </list>
+    /// <para>
+    /// <see cref="FieldType.Paragraph"/> is deliberately absent. A long answer
+    /// is in the answer set like every other one; it is kept out of
+    /// <em>segments</em> by a judgement about what makes a sensible audience,
+    /// which is not a fact about storage and is not this function's business.
+    /// An email echoing back what somebody wrote is the case it is for.
+    /// </para>
+    /// <para>
+    /// <see cref="FieldType.Section"/> is absent too, because
+    /// <see cref="On"/> has already dropped it before anything asks.
+    /// </para>
+    /// </remarks>
+    public static bool InTheAnswerSet(bool isApplicationForm, FormField field) =>
+        field.Type != FieldType.File
+        && !(isApplicationForm
+             && field.Storage == AnswerStorage.Column
+             && AnswerColumns.TryKindOf(field.Column, out _));
+
+    /// <summary>
     /// Why this question's answer cannot pick an audience, or null when it can.
     /// </summary>
     /// <remarks>
     /// Three reasons, and each of them is about where the answer ended up or
     /// what shape it is in rather than about how much work the matching would
-    /// be.
+    /// be. Two of the three are <see cref="InTheAnswerSet"/>, which is where
+    /// they belong: the mail's catalogue asks the same question for its own
+    /// purposes, and two copies of "where does this answer live" would agree
+    /// until one of them was edited.
     /// </remarks>
     private static string? Unmatchable(bool isApplicationForm, FormField field)
     {
@@ -102,27 +146,20 @@ public static class AnswerQuestions
                    + "opposite.";
         }
 
-        if (field.Type == FieldType.File)
+        if (InTheAnswerSet(isApplicationForm, field))
         {
-            return "An upload has no answer to match. What is stored is where the "
-                   + "file is, which is not something to choose recipients by.";
+            return null;
         }
 
-        // An answer promoted to a column is not in the jsonb the segment
-        // reads -- PostgresSubmissionStore writes it to the column instead and
-        // not to both -- so the question would offer a value that matches
-        // nobody. Only on an application form: every other kind keeps all of
-        // its answers in form_submissions.answers whatever the question says
-        // about a column.
-        if (isApplicationForm
-            && field.Storage == AnswerStorage.Column
-            && AnswerColumns.TryKindOf(field.Column, out _))
-        {
-            return "This answer is kept in a column of its own rather than with "
-                   + "the rest of the answers, so it cannot be matched here. "
-                   + "Choose the applicants by status instead.";
-        }
-
-        return null;
+        // The sentence rather than the fact, because the two answers read
+        // differently to the organizer in front of the picker: one is "there
+        // is nothing here to match", the other is "it is somewhere else, and
+        // here is what to use instead".
+        return field.Type == FieldType.File
+            ? "An upload has no answer to match. What is stored is where the "
+              + "file is, which is not something to choose recipients by."
+            : "This answer is kept in a column of its own rather than with "
+              + "the rest of the answers, so it cannot be matched here. "
+              + "Choose the applicants by status instead.";
     }
 }
