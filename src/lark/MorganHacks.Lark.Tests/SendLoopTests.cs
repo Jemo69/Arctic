@@ -228,17 +228,24 @@ public class SendLoopTests(NotifyDatabase db) : IClassFixture<NotifyDatabase>
             templateFromName: "MorganHacks",
             settingsJson: """{"subject":"s","previewText":"","fromName":"","fromEmail":"mail@morganhacks.test","replyTo":""}""");
 
-        await db.QueueAsync(campaign, Email("recipient"));
+        var recipient = Email("recipient");
+        await db.QueueAsync(campaign, recipient);
         var clock = new FakeTimeProvider();
         var provider = new FakeProvider(_ => SendOutcome.Sent("ses-message-name"));
 
         await RunOnce(LoopWith(provider, clock), clock);
 
-        // Quoted because MailAddress quotes every display name — valid, and
+        // This batch's own message rather than every message in it. The loop
+        // claims whatever is due, and a retry left behind by another test
+        // becomes due on its own clock -- so asserting over the whole batch
+        // makes this pass or fail on what else ran first.
+        //
+        // Quoted because MailAddress quotes every display name: valid, and
         // stripped by every client before it is shown. SenderNameTests says
-        // the same thing about the same rule.
-        Assert.All(provider.Sent, m =>
-            Assert.Equal("\"MorganHacks\" <mail@morganhacks.test>", m.From));
+        // the same thing beside the same rule.
+        Assert.Equal(
+            "\"MorganHacks\" <mail@morganhacks.test>",
+            Assert.Single(provider.Sent, m => m.ToEmail == recipient).From);
     }
 
     [Fact]
@@ -250,14 +257,16 @@ public class SendLoopTests(NotifyDatabase db) : IClassFixture<NotifyDatabase>
             templateFromName: "MorganHacks",
             settingsJson: """{"subject":"s","previewText":"","fromName":"MorganHacks Registration","fromEmail":"mail@morganhacks.test","replyTo":""}""");
 
-        await db.QueueAsync(campaign, Email("recipient"));
+        var recipient = Email("recipient");
+        await db.QueueAsync(campaign, recipient);
         var clock = new FakeTimeProvider();
         var provider = new FakeProvider(_ => SendOutcome.Sent("ses-message-name-2"));
 
         await RunOnce(LoopWith(provider, clock), clock);
 
-        Assert.All(provider.Sent, m =>
-            Assert.Equal("\"MorganHacks Registration\" <mail@morganhacks.test>", m.From));
+        Assert.Equal(
+            "\"MorganHacks Registration\" <mail@morganhacks.test>",
+            Assert.Single(provider.Sent, m => m.ToEmail == recipient).From);
     }
 
     [Fact]
@@ -270,13 +279,16 @@ public class SendLoopTests(NotifyDatabase db) : IClassFixture<NotifyDatabase>
             templateFromName: null,
             settingsJson: """{"subject":"s","previewText":"","fromName":"","fromEmail":"mail@morganhacks.test","replyTo":""}""");
 
-        await db.QueueAsync(campaign, Email("recipient"));
+        var recipient = Email("recipient");
+        await db.QueueAsync(campaign, recipient);
         var clock = new FakeTimeProvider();
         var provider = new FakeProvider(_ => SendOutcome.Sent("ses-message-name-3"));
 
         await RunOnce(LoopWith(provider, clock), clock);
 
-        Assert.All(provider.Sent, m => Assert.Equal("mail@morganhacks.test", m.From));
+        Assert.Equal(
+            "mail@morganhacks.test",
+            Assert.Single(provider.Sent, m => m.ToEmail == recipient).From);
     }
 
     [Fact]

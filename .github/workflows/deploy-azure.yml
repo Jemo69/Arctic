@@ -123,6 +123,7 @@ jobs:
           SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
+          SES_CONFIGURATION_SET: ${{ vars.SES_CONFIGURATION_SET }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
@@ -144,6 +145,7 @@ jobs:
           SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
+          SES_CONFIGURATION_SET: ${{ vars.SES_CONFIGURATION_SET }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}

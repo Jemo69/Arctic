@@ -18,6 +18,9 @@ param awsRegion = readEnvironmentVariable('AWS_REGION', '')
 param awsAccessKeyId = readEnvironmentVariable('AWS_ACCESS_KEY_ID', '')
 param awsSecretAccessKey = readEnvironmentVariable('AWS_SECRET_ACCESS_KEY', '')
 
+// Empty means SES reports nothing back about a send. See apps.bicep.
+param sesConfigurationSet = readEnvironmentVariable('SES_CONFIGURATION_SET', '')
+
 param googleClientId = readEnvironmentVariable('GOOGLE_CLIENT_ID', '')
 param googleClientSecret = readEnvironmentVariable('GOOGLE_CLIENT_SECRET', '')
 param googleRedirectUri = readEnvironmentVariable('GOOGLE_REDIRECT_URI', '')

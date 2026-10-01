@@ -40,6 +40,10 @@ param sentryDsn string = ''
 @description('SES region. Empty means lark runs but sends nothing.')
 param awsRegion string = ''
 
+// Which SES configuration set sends are tagged with, and therefore whether SES
+// reports bounces and complaints back. Empty degrades to the old behaviour.
+param sesConfigurationSet string = ''
+
 @secure()
 param awsAccessKeyId string = ''
 
@@ -220,6 +224,7 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     dbPassword: dbPassword
     sentryDsn: sentryDsn
     awsRegion: awsRegion
+    sesConfigurationSet: sesConfigurationSet
     awsAccessKeyId: awsAccessKeyId
     awsSecretAccessKey: awsSecretAccessKey
     googleClientId: googleClientId

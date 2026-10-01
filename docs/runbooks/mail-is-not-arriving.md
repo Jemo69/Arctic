@@ -84,6 +84,41 @@ All three verified with DKIM `SUCCESS` and MAIL FROM `SUCCESS` as of
 SES, not in the schema, so there is nothing in the repository to keep in step
 with it.
 
+## 5. Is SES reporting anything back
+
+```bash
+aws sesv2 get-configuration-set-event-destinations \
+  --configuration-set-name arctic-staging --profile morganhacks --region us-east-2
+```
+
+A send only produces events when it names a configuration set that has an event
+destination on it. Without that, SES accepts the message, the row reaches
+`sent`, and the bounce that happens two seconds later is never reported —
+`notify.suppressions` stays empty of real bounces and nothing ever reaches
+`delivered`.
+
+Three things have to line up, and all three are easy to have half of:
+
+| | Where |
+|---|---|
+| `SES_CONFIGURATION_SET` set | the GitHub environment, passed through `deploy-azure.yml` and `apps.bicep` |
+| The set has an event destination | SES, publishing BOUNCE/COMPLAINT/DELIVERY to an SNS topic |
+| The topic's subscription is **confirmed** | SNS — a subscription left `PendingConfirmation` delivers nothing |
+
+```bash
+aws sns list-subscriptions-by-topic \
+  --topic-arn arn:aws:sns:us-east-2:602773792443:arctic-ses-events-staging \
+  --profile morganhacks --region us-east-2 --query "Subscriptions[].SubscriptionArn"
+```
+
+An ARN means confirmed. The literal string `PendingConfirmation` means the
+endpoint never answered — which is itself a useful signal, because confirming
+requires the webhook to verify the SNS signature and then fetch the
+`SubscribeURL`, so a confirmed subscription proves that path works.
+
+Staging, as of 2026-10-01: set `arctic-staging`, destination `sns-webhook`,
+subscription confirmed.
+
 ---
 
 ## The test that actually proves it
