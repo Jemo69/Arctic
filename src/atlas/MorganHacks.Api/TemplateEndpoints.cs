@@ -266,11 +266,12 @@ public static partial class TemplateEndpoints
     /// <see cref="CampaignEndpoints"/>' route, where the segment is.
     /// </para>
     /// </remarks>
-    private static IResult Placeholders() => Results.Ok(new
-    {
-        placeholders = MergeFields.All
-            .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
-    });
+    private static async Task<IResult> Placeholders(
+        SavedValueStore savedValues, CancellationToken ct) => Results.Ok(new
+        {
+            placeholders = MergeFields.Including(await savedValues.ListAsync(ct))
+                .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
+        });
 
     // ------------------------------------------------------------- writing ---
 
