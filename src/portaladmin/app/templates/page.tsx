@@ -1,7 +1,8 @@
+import { SavedValues } from "@/components/templates/saved-values";
 import { TemplatesTable } from "@/components/templates/templates-table";
 import { readPageData } from "@/lib/page-data";
 import { Shell } from "../shell";
-import { readTemplates } from "./api";
+import { readSavedValues, readTemplates } from "./api";
 
 /**
  * Every email this system can send.
@@ -11,7 +12,13 @@ import { readTemplates } from "./api";
  * what each one is called, which lane it sends down, and one press to open it.
  */
 export default async function Templates() {
-  const { person, data: templates } = await readPageData(() => readTemplates(true, true));
+  // Both at once. Neither needs the other's answer, and the saved values are
+  // a small list on the same screen — awaiting them in sequence would make the
+  // page arrive later for nothing.
+  const [{ person, data: templates }, saved] = await Promise.all([
+    readPageData(() => readTemplates(true, true)),
+    readSavedValues(),
+  ]);
 
   if (!templates.ok) {
     return (
@@ -41,6 +48,12 @@ export default async function Templates() {
       <TemplatesTable key={person.personId} templates={templates.items} personId={person.personId}
         initialHiddenKeys={templates.hiddenKeys}
         canManage={canManage} canDelete={canDelete} />
+
+      <SavedValues
+        initial={saved.ok ? saved.values : []}
+        canManage={canManage}
+        loadError={saved.ok ? null : saved.error}
+      />
     </Shell>
   );
 }

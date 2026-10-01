@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using MorganHacks.Applications.Forms;
 using MorganHacks.Applications.Segments;
 using MorganHacks.Applications.Services;
 using MorganHacks.Identity.Domain;
@@ -346,6 +347,7 @@ public static class CampaignEndpoints
         HttpContext http,
         TemplateStore templates,
         CampaignStore campaigns,
+        SavedValueStore savedValues,
         ILogger<CreateCampaignRequest> log,
         CancellationToken ct)
     {
@@ -391,7 +393,9 @@ public static class CampaignEndpoints
             return Results.BadRequest(new { error = wrong });
         }
 
-        var unfillable = segment is null ? null : Unfillable(template, segment);
+        var unfillable = segment is null
+            ? null
+            : Unfillable(template, segment, await savedValues.ListAsync(ct), template.FormId is not null);
         if (unfillable is not null)
         {
             return Results.BadRequest(new { error = unfillable });
@@ -410,7 +414,8 @@ public static class CampaignEndpoints
 
     private static async Task<IResult> Update(
         Guid id, UpdateCampaignRequest? request, HttpContext http,
-        CampaignStore campaigns, TemplateStore templates, CancellationToken ct)
+        CampaignStore campaigns, TemplateStore templates,
+        SavedValueStore savedValues, CancellationToken ct)
     {
         var campaign = await campaigns.FindAsync(id, ct);
         if (campaign is null) return Results.NotFound(new { error = "No such campaign." });
@@ -449,7 +454,8 @@ public static class CampaignEndpoints
         if (!fromEmail[(fromEmail.LastIndexOf('@') + 1)..].Equals(template.FromDomain, StringComparison.OrdinalIgnoreCase))
             return Results.BadRequest(new { error = $"Use a sender address on {template.FromDomain}, the sending domain for this template." });
         var settings = new CampaignEmailSettings(subject, previewText, fromName, fromEmail, replyTo);
-        if (segment is not null && Unfillable(settings.Apply(template), segment) is { } problem)
+        if (segment is not null
+            && Unfillable(settings.Apply(template), segment, await savedValues.ListAsync(ct), template.FormId is not null) is { } problem)
             return Results.BadRequest(new { error = problem });
 
         if (!await campaigns.UpdateDraftAsync(id, campaign.Revision, name, settings, segment?.ToJson(),
@@ -510,6 +516,8 @@ public static class CampaignEndpoints
         ISegmentResolver resolver,
         IConfiguration config,
         IEventStore events,
+        SavedValueStore savedValues,
+        IFormStore forms,
         CancellationToken ct)
     {
         var campaign = await campaigns.FindAsync(id, ct);
@@ -539,6 +547,14 @@ public static class CampaignEndpoints
         // the segment does not carry; the approver behind them cannot.
         var template = await templates.FindAsync(campaign.TemplateKey, ct);
         if (template is not null && campaign.Settings is not null) template = campaign.Settings.Apply(template);
+
+        // Both read once, before the first check that needs them. The saved
+        // values are part of what a name resolves against, so the unfillable
+        // check below cannot run without them.
+        var season = await SeasonFor(segment!, events, ct);
+        var saved = await savedValues.ListAsync(ct);
+        var paper = await PaperFor(template, forms, ct);
+
         var problems = new List<string>();
 
         if (template is null || template.Id != campaign.TemplateId)
@@ -548,19 +564,17 @@ public static class CampaignEndpoints
             // it. Same condition Send refuses on, said earlier.
             problems.Add(MissingTemplate);
         }
-        else if (Unfillable(template, segment!) is { } problem)
+        else if (Unfillable(template, segment!, saved, paper is not null) is { } problem)
         {
             problems.Add(problem);
         }
-
-        var season = await SeasonFor(segment!, events, ct);
 
         // Against whatever the key means now, which is what the gap warning
         // has always been measured against. When that is not the row this
         // campaign holds, MissingTemplate above is already saying the campaign
         // has to be drafted again — and showing the current wording is still
         // the most useful thing on the screen while somebody does.
-        var coverage = Covered(template, sendable, config, season);
+        var coverage = Covered(template, sendable, config, season, saved, paper);
 
         if (Missing(coverage) is { } gap)
         {
@@ -606,7 +620,7 @@ public static class CampaignEndpoints
 
             // A few of them, actually rendered. Of the sendable list for the
             // same reason the sample is.
-            renders = Rendered(template, sendable, config, season),
+            renders = Rendered(template, sendable, config, season, saved, paper),
         });
     }
 
@@ -630,7 +644,11 @@ public static class CampaignEndpoints
     /// </para>
     /// </remarks>
     private static async Task<IResult> Placeholders(
-        Guid id, CampaignStore campaigns, CancellationToken ct)
+        Guid id,
+        CampaignStore campaigns,
+        TemplateStore templates,
+        SavedValueStore savedValues,
+        CancellationToken ct)
     {
         var campaign = await campaigns.FindAsync(id, ct);
         if (campaign is null)
@@ -645,7 +663,10 @@ public static class CampaignEndpoints
 
         return Results.Ok(new
         {
-            placeholders = MergeFields.For(segment!)
+            placeholders = MergeFields.For(
+                    segment!,
+                    await savedValues.ListAsync(ct),
+                    aboutAForm: (await templates.FindAsync(campaign.TemplateKey, ct))?.FormId is not null)
                 .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
         });
     }
@@ -690,6 +711,8 @@ public static class CampaignEndpoints
         ISegmentResolver resolver,
         IConfiguration config,
         IEventStore events,
+        SavedValueStore savedValues,
+        IFormStore forms,
         ILogger<Campaign> log,
         CancellationToken ct)
     {
@@ -786,7 +809,11 @@ public static class CampaignEndpoints
             });
         }
 
-        if (Unfillable(template, segment!) is { } unfillable)
+        var season = await SeasonFor(segment!, events, ct);
+        var saved = await savedValues.ListAsync(ct);
+        var paper = await PaperFor(template, forms, ct);
+
+        if (Unfillable(template, segment!, saved, paper is not null) is { } unfillable)
         {
             return Results.BadRequest(new { error = unfillable });
         }
@@ -796,16 +823,14 @@ public static class CampaignEndpoints
 
         var sendable = resolved.Members.Where(m => !suppressed.ContainsKey(m.Email)).ToList();
 
-        var season = await SeasonFor(segment!, events, ct);
-
-        if (Missing(Covered(template, sendable, config, season)) is { } gap)
+        if (Missing(Covered(template, sendable, config, season, saved, paper)) is { } gap)
         {
             return Results.BadRequest(new { error = gap });
         }
 
         var recipients = resolved.Members.Select(member =>
         {
-            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season));
+            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season, saved, paper));
             return new BroadcastRecipient(
                 member.PersonId, member.Email,
                 rendered.Subject, rendered.BodyHtml, rendered.BodyText,
@@ -926,10 +951,14 @@ public static class CampaignEndpoints
     /// recalled. This is the check that turns "an obvious mistake in a test"
     /// into "a refusal before the send".
     /// </remarks>
-    private static string? Unfillable(EmailTemplate template, Segment segment)
+    private static string? Unfillable(
+        EmailTemplate template,
+        Segment segment,
+        IReadOnlyList<SavedValue> saved,
+        bool aboutAForm)
     {
         var wanted = TemplateRenderer.PlaceholdersIn(template);
-        var available = MergeFields.Fillable(segment);
+        var available = MergeFields.Fillable(segment, saved, aboutAForm);
         var missing = wanted.Where(p => !available.Contains(p)).OrderBy(p => p, StringComparer.Ordinal).ToList();
 
         return missing.Count == 0
@@ -1008,6 +1037,21 @@ public static class CampaignEndpoints
     /// event placeholder then stands and the coverage check refuses the send.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The form a template is about, where it names one that still exists.
+    /// </summary>
+    /// <remarks>
+    /// Null covers three cases that are one case to a reader: the template
+    /// names no form, names one that was deleted, or names one that 0038
+    /// removed. All three leave every <c>{{form.*}}</c> placeholder standing,
+    /// and the coverage check turns that into a refusal before the send — which
+    /// is the right failure, because a dead link inside an approved broadcast
+    /// is worse than a broadcast that will not go out.
+    /// </remarks>
+    private static async Task<Form?> PaperFor(
+        EmailTemplate? template, IFormStore forms, CancellationToken ct) =>
+        template?.FormId is { } formId ? await forms.ByIdAsync(formId, ct) : null;
+
     private static async Task<EventDetail?> SeasonFor(
         Segment segment, IEventStore events, CancellationToken ct) =>
         segment is Segment.InStatus inStatus
@@ -1018,7 +1062,9 @@ public static class CampaignEndpoints
         EmailTemplate? template,
         IReadOnlyList<SegmentMember> members,
         IConfiguration config,
-        EventDetail? season)
+        EventDetail? season,
+        IReadOnlyList<SavedValue> saved,
+        Form? paper)
     {
         if (template is null)
         {
@@ -1033,7 +1079,7 @@ public static class CampaignEndpoints
 
         foreach (var member in members)
         {
-            var unfilled = MergeFields.Unfilled(wanted, member, config, season);
+            var unfilled = MergeFields.Unfilled(wanted, member, config, season, saved, paper);
             if (unfilled.Count == 0)
             {
                 continue;
@@ -1113,7 +1159,9 @@ public static class CampaignEndpoints
         EmailTemplate? template,
         IReadOnlyList<SegmentMember> members,
         IConfiguration config,
-        EventDetail? season)
+        EventDetail? season,
+        IReadOnlyList<SavedValue> saved,
+        Form? paper)
     {
         if (template is null || members.Count == 0)
         {
@@ -1124,7 +1172,7 @@ public static class CampaignEndpoints
         var chosen = new List<SegmentMember>();
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (members.FirstOrDefault(m => MergeFields.Unfilled(wanted, m, config, season).Count > 0) is { } gapped)
+        if (members.FirstOrDefault(m => MergeFields.Unfilled(wanted, m, config, season, saved, paper).Count > 0) is { } gapped)
         {
             chosen.Add(gapped);
             taken.Add(gapped.Email);
@@ -1145,7 +1193,7 @@ public static class CampaignEndpoints
 
         return chosen.Select(member =>
         {
-            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season));
+            var rendered = TemplateRenderer.Render(template, MergeFields.Values(member, config, season, saved, paper));
 
             return (object)new
             {
@@ -1157,7 +1205,7 @@ public static class CampaignEndpoints
                 // Named on the render as well as counted in the coverage, so a
                 // screen showing one message can mark the hole in it without
                 // cross-referencing a list beside it.
-                unfilled = MergeFields.Unfilled(wanted, member, config, season),
+                unfilled = MergeFields.Unfilled(wanted, member, config, season, saved, paper),
             };
         }).ToList();
     }
