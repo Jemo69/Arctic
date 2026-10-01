@@ -234,8 +234,11 @@ public class SendLoopTests(NotifyDatabase db) : IClassFixture<NotifyDatabase>
 
         await RunOnce(LoopWith(provider, clock), clock);
 
+        // Quoted because MailAddress quotes every display name — valid, and
+        // stripped by every client before it is shown. SenderNameTests says
+        // the same thing about the same rule.
         Assert.All(provider.Sent, m =>
-            Assert.Equal("MorganHacks <mail@morganhacks.test>", m.From));
+            Assert.Equal("\"MorganHacks\" <mail@morganhacks.test>", m.From));
     }
 
     [Fact]
@@ -254,7 +257,7 @@ public class SendLoopTests(NotifyDatabase db) : IClassFixture<NotifyDatabase>
         await RunOnce(LoopWith(provider, clock), clock);
 
         Assert.All(provider.Sent, m =>
-            Assert.Equal("MorganHacks Registration <mail@morganhacks.test>", m.From));
+            Assert.Equal("\"MorganHacks Registration\" <mail@morganhacks.test>", m.From));
     }
 
     [Fact]
