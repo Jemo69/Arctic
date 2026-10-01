@@ -7,7 +7,7 @@ import type {
   TemplateFormat,
   TemplateRow,
 } from "@/components/templates/types";
-import { createTemplate, discardSettingsDraft, fetchTemplateHtml, queueTemplateTest, readSavedValues, removeEmailTrigger, removeSavedValue, removeTemplate, renderPreview, saveSettingsDraft, saveTemplateVisibility, setEmailTriggerEnabled, updateTemplate, writeEmailTrigger, writeSavedValue } from "./api";
+import { createTemplate, discardSettingsDraft, fetchTemplateHtml, queueTemplateTest, readPlaceholders, readSavedValues, removeEmailTrigger, removeSavedValue, removeTemplate, renderPreview, saveSettingsDraft, saveTemplateVisibility, setEmailTriggerEnabled, updateTemplate, writeEmailTrigger, writeSavedValue } from "./api";
 import { validateDesign, validateSettings, type TemplateFieldErrors } from "@/components/templates/validation";
 
 /**
@@ -358,4 +358,22 @@ export async function deleteEmailTrigger(id: string) {
   }
 
   return result;
+}
+
+/**
+ * The placeholder list again, for a form the author has just chosen.
+ *
+ * The page reads this once on the server so the menu is there on the first
+ * keystroke. This is the other case: binding a form adds a whole group, and
+ * waiting for a save and a reload to see it reads as the picker being broken.
+ */
+export async function loadPlaceholders(formId: string | null) {
+  if (formId !== null && !/^[0-9a-f-]{36}$/i.test(formId)) {
+    return { ok: false as const, error: "That is not a form." };
+  }
+
+  const read = await readPlaceholders(null, formId);
+  return read.ok
+    ? { ok: true as const, items: read.items }
+    : { ok: false as const, error: read.error };
 }

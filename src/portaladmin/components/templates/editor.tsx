@@ -18,6 +18,7 @@ import styles from "./templates.module.css";
 import { useDraft, type DraftHandle } from "./use-draft";
 import { usePreview } from "./use-preview";
 import { useSave } from "./use-save";
+import { loadPlaceholders } from "@/app/templates/actions";
 import type { EditorStep, FormChoice, Placeholder, Template } from "./types";
 
 const loadDesignWorkspace = () => import("./design-workspace");
@@ -78,7 +79,36 @@ export function Editor({
    */
   forms: FormChoice[] | null;
 }) {
-  const handle = useDraft(template, available, { id: personId, email: defaultRecipient, canManage });
+  // The server's list to start with, so the menu is there on the first
+  // keystroke. Replaced when the author binds a form, which adds a group the
+  // page could not have known about when it rendered.
+  const [names, setNames] = useState(available);
+
+  const handle = useDraft(template, names, { id: personId, email: defaultRecipient, canManage });
+
+  /*
+   * Binding a form adds a whole group to the menu, and the page could not have
+   * known about it when it rendered. Without this an author picks a form and
+   * nothing happens -- which reads as the picker being broken rather than as a
+   * list that has not caught up.
+   *
+   * Keyed on the id so it fires on the change rather than on every render, and
+   * guarded so a reply that arrives after the author has picked something else
+   * does not overwrite the newer list.
+   */
+  const chosenForm = handle.draft.formId;
+
+  useEffect(() => {
+    let current = true;
+
+    loadPlaceholders(chosenForm === "" ? null : chosenForm).then((result) => {
+      if (current && result.ok) setNames(result.items);
+    });
+
+    return () => {
+      current = false;
+    };
+  }, [chosenForm]);
   const { draft } = handle;
   const query = useSearchParams();
   const { collapseSidebar } = useSidebarState();
@@ -172,7 +202,7 @@ export function Editor({
           <fieldset ref={form} className={settings.form} disabled={!canManage || !handle.ready || saving.saving}>
             <TemplateSettings
               handle={editable}
-              available={available}
+              available={names}
               errors={saving.fieldErrors}
               forms={forms}
             />

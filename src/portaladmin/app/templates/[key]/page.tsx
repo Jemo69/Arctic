@@ -30,14 +30,23 @@ export default async function TemplatePage({
   // Not decoded again. The router hands over a decoded segment, and a second
   // pass would quietly rewrite any key with a percent sign in it.
   //
-  // Both reads are started together. The placeholders do not depend on the
-  // template, and awaiting them in turn would put a second round trip in front
-  // of a page that already waits on one.
-  const { person, data: [read, names, forms] } = await readPageData(() => Promise.all([
+  // The placeholders DO depend on the template now: which names are offered
+  // includes the form group, and whether that is offered depends on the form
+  // this template names. So the template is read first and its form passed on.
+  //
+  // That is a second round trip, inside the same datacenter, and it buys a
+  // first paint that is already right. The alternative -- read them together
+  // and let the client correct itself -- shows an author the short list and
+  // then the long one, which reads as the menu changing its mind.
+  //
+  // The forms list is still started alongside, because it depends on neither.
+  const { person, data: [read, forms] } = await readPageData(() => Promise.all([
     readTemplate(key),
-    readPlaceholders(campaign, key),
     readFormChoices(),
   ]));
+
+  const names = await readPlaceholders(
+    campaign, read.ok ? read.template.formId : null);
 
   if (!read.ok) {
     if (read.status === 404) {

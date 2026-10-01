@@ -279,19 +279,32 @@ public static partial class TemplateEndpoints
     /// </para>
     /// </remarks>
     /// <remarks>
-    /// <c>?template=</c> is optional and names the template being edited. With
-    /// it, the form group is offered only when that template actually names a
-    /// form; without it the answer is the same list every template can fill,
-    /// which is what a new template gets before it has a key.
+    /// <c>?form=</c> is optional and names the form the editor currently has
+    /// chosen. With it, the form group is offered; without it the answer is
+    /// the list every template can fill.
+    /// <para>
+    /// The <b>draft's</b> form rather than the saved template's, and that
+    /// distinction is the whole fix. This used to take <c>?template=</c> and
+    /// look the key up in <c>notify.templates</c> — but the editor works on a
+    /// working draft, and choosing a form writes it there and not to the live
+    /// row. So an author picked a form, nothing appeared in the menu, and
+    /// nothing ever would until they pressed save and reloaded. The narrowing
+    /// was right and was reading the wrong row.
+    /// </para>
+    /// <para>
+    /// Checked against <c>applications.forms</c> rather than believed, so a
+    /// made-up id cannot talk the catalogue into offering names the send will
+    /// refuse. That check is the only reason this takes an id at all rather
+    /// than a boolean the client could simply assert.
+    /// </para>
     /// </remarks>
     private static async Task<IResult> Placeholders(
-        string? template,
-        TemplateStore templates,
+        Guid? form,
+        IFormStore forms,
         SavedValueStore savedValues,
         CancellationToken ct)
     {
-        var aboutAForm = !string.IsNullOrWhiteSpace(template)
-            && (await templates.FindAsync(template, ct))?.FormId is not null;
+        var aboutAForm = form is { } formId && await forms.ByIdAsync(formId, ct) is not null;
 
         return Results.Ok(new
         {
