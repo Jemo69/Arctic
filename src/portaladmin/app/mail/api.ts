@@ -12,6 +12,8 @@ import type {
   CampaignStatus,
   EventChoice,
   FormChoice,
+  FormQuestion,
+  FormQuestionsRead,
   MessageProgress,
   PlaceholderCoverage,
   Preview,
@@ -342,6 +344,12 @@ function checked(preview: Preview): Preview {
   return {
     ...preview,
     sample: strings(preview.sample),
+
+    // Counted rather than trusted, like the coverage numbers: it is rendered
+    // through toLocaleString, so a string here is a crash on the one screen
+    // that must not have one. Absent and zero are shown the same way — as
+    // nothing — so collapsing them loses nothing.
+    unreachableCount: counted(preview.unreachableCount),
     problems: Array.isArray(preview.problems)
       ? strings(preview.problems)
       : undefined,
@@ -489,6 +497,85 @@ export async function readForms(): Promise<{
   } catch {
     return { forms: [], events: [], error: "Forms and events could not be loaded. Refresh the page to try again." };
   }
+}
+
+/**
+ * One form's questions, for the segment that picks an answer.
+ *
+ * The middle and last steps of form → question → value in one read, because
+ * the options a choice question declares are part of the form and come back
+ * with it. Behind `applications.view`, the same permission the form list above
+ * needs — deliberately not `applications.view_responses`, because nothing here
+ * is anybody's answer.
+ *
+ * The error comes back rather than an empty list. "This form asks nothing we
+ * can match on" and "you are not allowed to read this form" put somebody on
+ * completely different errands, and so does a connection that dropped.
+ */
+export async function readFormQuestions(formId: string): Promise<FormQuestionsRead> {
+  let response: Response;
+  try {
+    response = await apiFetch(`/admin/forms/${encodeURIComponent(formId)}/questions`);
+  } catch {
+    return { ok: false, error: "The form's questions could not be loaded. Try again." };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: response.status === 401
+        ? "Your session has ended. Sign in again."
+        : response.status === 403
+          ? "You do not have permission to read this form's questions."
+          : response.status === 404
+            ? "That form no longer exists."
+            : "The form's questions could not be loaded. Try again.",
+    };
+  }
+
+  const body = (await response.json()) as {
+    version?: number | null;
+    questions?: unknown;
+  };
+
+  return {
+    ok: true,
+    version: typeof body.version === "number" ? body.version : null,
+    questions: questions(body.questions),
+  };
+}
+
+/**
+ * A question list reduced to what the picker can actually draw.
+ *
+ * The cast above is a promise rather than a check, and this list decides what a
+ * dropdown offers — so a question with no key is dropped instead of becoming an
+ * option that stores an empty criterion.
+ */
+function questions(value: unknown): FormQuestion[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(
+      (entry): entry is FormQuestion =>
+        typeof entry?.key === "string" && entry.key !== "",
+    )
+    .map((entry) => ({
+      key: entry.key,
+      label: typeof entry.label === "string" && entry.label !== "" ? entry.label : entry.key,
+      type: typeof entry.type === "string" ? entry.type : "",
+      values: Array.isArray(entry.values)
+        ? entry.values
+            .filter((option) => typeof option?.value === "string")
+            .map((option) => ({
+              value: option.value,
+              label: typeof option.label === "string" && option.label !== "" ? option.label : option.value,
+            }))
+        : [],
+      unmatchable: typeof entry.unmatchable === "string" ? entry.unmatchable : null,
+    }));
 }
 
 /**

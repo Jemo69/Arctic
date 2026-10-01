@@ -12,7 +12,7 @@ import { describeSegment, when } from "@/components/mail/types";
 import { currentPerson } from "@/lib/api";
 import { readPlaceholders } from "@/app/templates/api";
 import { Shell } from "../../shell";
-import { loadSavedRecipients, previewRecipients, saveCampaignSettings, sendNow, stopSending } from "../actions";
+import { loadFormQuestions, loadSavedRecipients, previewRecipients, saveCampaignSettings, sendNow, stopSending } from "../actions";
 import { readBroadcastTemplates, readCampaign, readForms } from "../api";
 
 /**
@@ -89,6 +89,7 @@ export default async function Campaign({
           save={saveCampaignSettings.bind(null, id)}
           preview={previewRecipients.bind(null, id)}
           send={sendNow.bind(null, id)}
+          loadQuestions={loadFormQuestions}
         />
       </Shell>
     );
@@ -99,7 +100,7 @@ export default async function Campaign({
   // person can read. Its id otherwise, which is less useful and still true.
   const segment = campaign.segment;
   const formName =
-    segment?.type === "formRespondents"
+    segment?.type === "formRespondents" || segment?.type === "formAnswer"
       ? (forms.forms.find((form) => form.id === segment.formId)?.name ?? null)
       : null;
 

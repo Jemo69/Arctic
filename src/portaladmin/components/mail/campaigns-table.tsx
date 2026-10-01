@@ -16,14 +16,23 @@ const number = new Intl.NumberFormat("en-US");
 function CampaignAudience({ campaign, forms, events }: { campaign: CampaignRow; forms: FormChoice[]; events: EventChoice[] }) {
   const audience = campaign.audience;
   if (!audience) return <span className={styles.missing}>Not selected</span>;
-  const name = audience.type === "formRespondents" ? forms.find(form => form.id === audience.sourceId)?.name
+  const byForm = audience.type === "formRespondents" || audience.type === "formAnswer";
+  const name = byForm ? forms.find(form => form.id === audience.sourceId)?.name
     : audience.type === "applicationStatus" ? events.find(event => event.id === audience.sourceId)?.name : null;
-  const label = audience.type === "formRespondents" ? "Form respondents" : audience.type === "applicationStatus" ? "Applicants" : "Email list";
+  const label = audience.type === "formRespondents" ? "Form respondents"
+    : audience.type === "formAnswer" ? "Form answers"
+      : audience.type === "applicationStatus" ? "Applicants" : "Email list";
   const statusLabels = (audience.statuses ?? []).map(status => status.replaceAll("_", " ").replace(/^./, letter => letter.toUpperCase()));
+
+  // The question's key and the value, as the segment stored them. The label
+  // would need the form loaded and would be wrong the moment somebody reworded
+  // the question; the key is what was asked for and stays true.
+  const criterion = audience.type === "formAnswer" && audience.question ? `${audience.question} = ${audience.answer ?? ""}` : null;
   return <div className={styles.audience}>
     <span className={styles.audienceTag} title={name ?? label}>{name ?? label}</span>
     <span className={styles.audienceDetail}>
       {name ? <span>{label}</span> : audience.type === "explicitList" ? <span>{number.format(audience.count ?? 0)} {(audience.count ?? 0) === 1 ? "address" : "addresses"}</span> : null}
+      {criterion ? <span title={criterion}>{criterion}</span> : null}
       {statusLabels.length ? <span title={statusLabels.join(", ")}>{statusLabels.length === 1 ? statusLabels[0] : `${statusLabels.length} statuses`}</span> : null}
     </span>
   </div>;

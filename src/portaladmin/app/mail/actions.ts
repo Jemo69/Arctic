@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { CampaignListFilters, CampaignSaveResult, CampaignUpdate, Preview, RecipientRead } from "@/components/mail/types";
+import type { CampaignListFilters, CampaignSaveResult, CampaignUpdate, FormQuestionsRead, Preview, RecipientRead } from "@/components/mail/types";
 import {
   cancelCampaign,
   createCampaign,
   previewCampaign,
   readCampaignRecipients,
   readCampaigns,
+  readFormQuestions,
   sendCampaign,
   updateCampaign,
 } from "./api";
@@ -90,6 +91,18 @@ export async function previewRecipients(id: string): Promise<PreviewResult> {
 
 export async function loadSavedRecipients(id: string, page: number): Promise<RecipientRead> {
   return readCampaignRecipients(id, page);
+}
+
+/**
+ * The questions on one form, for the answer picker.
+ *
+ * An action rather than a prop on the page, because which form the picker is
+ * looking at changes while somebody is on the screen — loading every form's
+ * questions up front would be a read per form to fill one dropdown nobody may
+ * open.
+ */
+export async function loadFormQuestions(formId: string): Promise<FormQuestionsRead> {
+  return readFormQuestions(formId);
 }
 
 export async function saveCampaignSettings(id: string, draft: CampaignUpdate): Promise<CampaignSaveResult> {

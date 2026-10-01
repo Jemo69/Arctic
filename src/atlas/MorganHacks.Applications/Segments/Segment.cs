@@ -8,19 +8,29 @@ namespace MorganHacks.Applications.Segments;
 /// Who a broadcast is aimed at.
 /// </summary>
 /// <remarks>
-/// Three shapes, deliberately, and no fourth. Every one of them answers a
-/// question the registration team actually asks — "tell everyone we accepted",
-/// "tell everyone who filled in the mentor form", "tell these four people" —
-/// and none of them is a query builder.
+/// Four shapes, deliberately, and every one of them answers a question the
+/// registration team actually asks — "tell everyone we accepted", "tell
+/// everyone who filled in the mentor form", "tell everyone who said they want
+/// a hardware track", "tell these four people". None of them is a query
+/// builder.
 /// <para>
 /// A query builder is the obvious next step and it is the wrong one. It turns
 /// a stored segment into a stored program, so reading it back a month later
 /// means re-implementing the evaluator to know what it meant; it makes every
 /// column of <c>applications.*</c> part of the API, so the schema can no
 /// longer change; and it hands somebody the ability to compose a filter nobody
-/// reviewed into several hundred emails that cannot be recalled. Three named
-/// shapes can each be read as a sentence, which is the property that matters
-/// when the question is "who exactly did we email".
+/// reviewed into several hundred emails that cannot be recalled. A named shape
+/// can be read as a sentence, which is the property that matters when the
+/// question is "who exactly did we email".
+/// </para>
+/// <para>
+/// <see cref="FormAnswer"/> is the one that comes closest to the line, so it
+/// is worth saying where the line is. It carries one question and one value
+/// and the only operator it has is equality, so there is no operator to
+/// choose, no two criteria to combine and nothing to nest. "Answered
+/// <em>track</em> with <em>hardware</em>" is still one sentence; "answered
+/// track with hardware OR shirt size with large, unless graduating before
+/// 2027" is the program, and none of the four can express it.
 /// </para>
 /// <para>
 /// Parsed from JSON rather than bound by the framework because this is what
@@ -69,6 +79,45 @@ public abstract record Segment
     public sealed record FormRespondents(Guid FormId) : Segment
     {
         public override string Type => "formRespondents";
+    }
+
+    /// <summary>
+    /// Everyone who answered one question on one form with one value.
+    /// </summary>
+    /// <remarks>
+    /// The thing <see cref="FormRespondents"/> could not say. "Everyone who
+    /// filled in the interest survey" is four hundred people and "everyone who
+    /// said they want a hardware track" is the thirty-one worth asking about
+    /// the hardware track, and the second is the mail somebody actually wants
+    /// to send.
+    /// <para>
+    /// <b>This is not a merge field and nothing about the answer reaches the
+    /// message.</b> It is a WHERE clause choosing recipients, so the answer
+    /// never leaves <c>applications.*</c> and never lands in
+    /// <c>notify.messages</c> — which is why none of the reasoning that
+    /// withheld <c>dietary_needs</c> from the merge catalogue applies to it.
+    /// What gets stored is the criterion, in <c>notify.campaigns.segment</c>,
+    /// beside the criteria already stored there.
+    /// </para>
+    /// <para>
+    /// <see cref="Question"/> is a <c>FormField.Key</c> and
+    /// <see cref="Value"/> is the answer as the form stores it — an option's
+    /// <c>FieldOption.Value</c> for a choice, the text for a short answer,
+    /// <c>true</c> or <c>false</c> for an agreement. Both are kept as written
+    /// rather than resolved to a label: a label can be reworded later and the
+    /// stored segment would then name a question nobody asked.
+    /// </para>
+    /// <para>
+    /// One question and one value, never a list of either. A list is the first
+    /// step of the query builder the three shapes above exist to avoid, and
+    /// the segment that wants two answers is two campaigns — which is also the
+    /// honest answer, because two answers mailed together cannot be reported
+    /// on separately afterwards.
+    /// </para>
+    /// </remarks>
+    public sealed record FormAnswer(Guid FormId, string Question, string Value) : Segment
+    {
+        public override string Type => "formAnswer";
     }
 
     /// <summary>
@@ -128,6 +177,13 @@ public abstract record Segment
             statuses = s.Statuses.Select(x => x.ToWire()),
         }),
         FormRespondents s => JsonSerializer.Serialize(new { type = s.Type, formId = s.FormId }),
+        FormAnswer s => JsonSerializer.Serialize(new
+        {
+            type = s.Type,
+            formId = s.FormId,
+            question = s.Question,
+            value = s.Value,
+        }),
         Addresses s => JsonSerializer.Serialize(new { type = s.Type, emails = s.Emails }),
         _ => throw new InvalidOperationException($"No stored shape for '{Type}'."),
     };
@@ -154,8 +210,8 @@ public abstract record Segment
 
         if (!json.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String)
         {
-            error = "A segment needs a type: applicationStatus, formRespondents "
-                    + "or explicitList.";
+            error = "A segment needs a type: applicationStatus, formRespondents, "
+                    + "formAnswer or explicitList.";
             return false;
         }
 
@@ -172,13 +228,89 @@ public abstract record Segment
 
                 segment = new FormRespondents(formId);
                 return true;
+            case "formAnswer":
+                return TryAnswer(json, out segment, out error);
             case "explicitList":
                 return TryAddresses(json, out segment, out error);
             default:
-                error = "That is not a segment we know how to send to. "
-                        + "Pick applicationStatus, formRespondents or explicitList.";
+                error = "That is not a segment we know how to send to. Pick "
+                        + "applicationStatus, formRespondents, formAnswer or "
+                        + "explicitList.";
                 return false;
         }
+    }
+
+    /// <summary>
+    /// The longest question key and answer value this will accept.
+    /// </summary>
+    /// <remarks>
+    /// Both are bounds on text that ends up in a stored jsonb document and in
+    /// a bound parameter, so neither is a style rule. The key bound is
+    /// <c>DraftKeys</c>'s own shape — a key is at most 63 characters, because
+    /// it eventually has to be a column name — and the value bound is the cap
+    /// <c>SubmissionValidation</c> puts on a short answer, so a value this
+    /// refuses is one no answer could have been.
+    /// </remarks>
+    private const int MaxQuestionLength = 63;
+
+    private const int MaxValueLength = 500;
+
+    /// <summary>
+    /// One question, one value, and a sentence for each way that can be wrong.
+    /// </summary>
+    /// <remarks>
+    /// The value is trimmed and nothing else is done to it. Lower-casing it
+    /// here would be a second place that decides how a value is compared —
+    /// <see cref="PostgresSegmentResolver"/> is the first — and a stored
+    /// segment saying <c>hardware</c> when the organizer picked
+    /// <c>Hardware</c> is a stored segment that does not say what was chosen.
+    /// </remarks>
+    private static bool TryAnswer(JsonElement json, out Segment? segment, out string? error)
+    {
+        segment = null;
+        error = null;
+
+        if (!TryId(json, "formId", out var formId))
+        {
+            error = "This segment needs the form the answer was given on.";
+            return false;
+        }
+
+        var question = Trimmed(json, "question");
+        if (question is null)
+        {
+            error = "Choose which question's answer this segment means.";
+            return false;
+        }
+
+        if (question.Length > MaxQuestionLength)
+        {
+            error = "That is not a question key this form could have.";
+            return false;
+        }
+
+        var value = Trimmed(json, "value");
+        if (value is null)
+        {
+            // Not the same as "has not answered". A segment with no value
+            // would mean "answered this question with anything", which is a
+            // different and much larger audience than anybody picking a value
+            // intends — so it is refused rather than guessed at.
+            error = "Choose which answer to that question this segment means.";
+            return false;
+        }
+
+        if (value.Length > MaxValueLength)
+        {
+            error = string.Format(
+                CultureInfo.InvariantCulture,
+                "That answer is longer than the {0:N0} characters a short answer can be.",
+                MaxValueLength);
+            return false;
+        }
+
+        segment = new FormAnswer(formId, question, value);
+        return true;
     }
 
     private static bool TryStatuses(JsonElement json, out Segment? segment, out string? error)
@@ -279,6 +411,19 @@ public abstract record Segment
         segment = new Addresses(emails);
         return true;
     }
+
+    /// <summary>One required string property, trimmed, or null for nothing.</summary>
+    /// <remarks>
+    /// Blank and absent are the same answer here. A question key of three
+    /// spaces is not a question somebody chose, and treating the two
+    /// differently would mean two sentences for one mistake.
+    /// </remarks>
+    private static string? Trimmed(JsonElement json, string name) =>
+        json.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.String
+        && value.GetString()?.Trim() is { Length: > 0 } text
+            ? text
+            : null;
 
     private static bool TryId(JsonElement json, string name, out Guid id)
     {

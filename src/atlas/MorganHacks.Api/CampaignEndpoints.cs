@@ -230,6 +230,14 @@ public static class CampaignEndpoints
                 : value.TryGetProperty("formId", out var formId) ? formId.GetString() : null,
             statuses = value.TryGetProperty("statuses", out var statuses) ? statuses.Deserialize<string[]>() : null,
             count = value.TryGetProperty("emails", out var emails) ? (int?)emails.GetArrayLength() : null,
+
+            // The criterion an answer segment stores, read back as it was
+            // written. The list says "Answered track with hardware" from these
+            // two rather than from a form it would have to go and load, which
+            // is also the only thing still true once the question has been
+            // reworded or the form taken down.
+            question = value.TryGetProperty("question", out var question) ? question.GetString() : null,
+            answer = value.TryGetProperty("value", out var answer) ? answer.GetString() : null,
         };
     }
 
@@ -568,6 +576,15 @@ public static class CampaignEndpoints
             // The number that matters: people who will receive something.
             recipientCount = sendable.Count,
             suppressedCount = suppressed.Count,
+
+            // Matching answers with nobody behind them, which is only ever
+            // non-zero for an answer segment. Reported rather than silently
+            // dropped because the form screen counts answers and this screen
+            // counts people, and an organizer who reads forty on one and
+            // thirty-one on the other with nothing in between has been shown
+            // a bug that is not there. See ResolvedSegment.Unreachable.
+            unreachableCount = resolved.Unreachable,
+
             suppressedByReason = suppressed.Values
                 .GroupBy(r => r, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal),

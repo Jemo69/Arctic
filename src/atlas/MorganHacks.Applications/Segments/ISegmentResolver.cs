@@ -31,14 +31,32 @@ public sealed record SegmentMember(
     Guid? PersonId, string Email, IReadOnlyDictionary<string, object?> Fields);
 
 /// <summary>
-/// What a segment resolves to, and whether it was too big to.
+/// What a segment resolves to, whether it was too big to, and what it had to
+/// leave out.
 /// </summary>
 /// <remarks>
 /// <see cref="Overflowed"/> rather than a truncated list, because sending to
 /// the first ten thousand of a segment somebody expected to be four hundred is
 /// worse than refusing. The caller refuses.
+/// <para>
+/// <see cref="Unreachable"/> is the count of matching answers there is nobody
+/// to mail about, and it exists because a number with no explanation beside it
+/// reads as a bug. An organizer looking at a form screen that says forty
+/// responses and a campaign screen that says thirty-one recipients will assume
+/// something is broken; the nine are anonymous answers, which
+/// <c>0027_anonymous_form_answers.sql</c> deliberately allows and which have no
+/// person and therefore no address. The alternative — counting them as
+/// recipients — is a number that promises mail nobody can receive.
+/// </para>
+/// <para>
+/// Zero for every segment except <see cref="Segment.FormAnswer"/>, because it
+/// is the only one that counts answers rather than people. It is not an error
+/// and nothing refuses on it: the send is correct, and this is what lets a
+/// screen say so.
+/// </para>
 /// </remarks>
-public sealed record ResolvedSegment(IReadOnlyList<SegmentMember> Members, bool Overflowed);
+public sealed record ResolvedSegment(
+    IReadOnlyList<SegmentMember> Members, bool Overflowed, int Unreachable = 0);
 
 /// <summary>
 /// Turns a stored segment into the people it currently means.
