@@ -47,7 +47,21 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${display.variable}`}>
+    <html
+      lang="en"
+      // Pinned, the same way the console pins it, and for the same reason: the
+      // MorganHacks mark is drawn for a light ground. Following the reader's
+      // system preference meant an applicant on a dark laptop and an organizer
+      // looking at the console were seeing two different products, which is
+      // not a thing either of them should have to work out.
+      //
+      // libs/ui/tokens.css carries both palettes, so this chooses between them
+      // rather than overriding anything. Supporting dark properly is a real
+      // option and a bigger piece of work -- the mark needs a treatment that
+      // holds on a dark ground before the preference can be honoured again.
+      data-theme="light"
+      className={`${inter.variable} ${display.variable}`}
+    >
       <body>{children}</body>
     </html>
   );

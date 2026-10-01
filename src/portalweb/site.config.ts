@@ -31,7 +31,15 @@ export const siteConfig = {
     iso: "2026-09-14T03:59:00Z",
   },
 
-  contactEmail: "morganhacks2022@gmail.com",
+  /**
+   * The address an applicant is told to write to.
+   *
+   * info@ rather than the gmail that was here: it is routed by Cloudflare on
+   * the apex, so a reply reaches somebody, and a personal gmail address in the
+   * footer of the page people read when something has gone wrong is the wrong
+   * thing to be showing them.
+   */
+  contactEmail: "info@morganhacks.com",
 
   /**
    * MLH trust badge. Hotlinked from MLH's own S3, same as the 2026 site did —
