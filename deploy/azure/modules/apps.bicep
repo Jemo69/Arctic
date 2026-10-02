@@ -115,6 +115,22 @@ nothing to wake it. It stays at one replica and is most of the idle cost.
 param warmReplicas int = 1
 
 @description('''
+How many replicas of the mail worker to keep running.
+
+One is the safe answer and the default. Zero is only viable together with the
+scale rule below, because nothing else would ever wake a worker that polls on a
+timer -- and a queue with no worker stops sending while every dashboard reads
+green.
+
+Set LARK_WARM_REPLICAS=0 on an environment where a few seconds of delay before
+the first message of a batch is cheaper than a replica sitting idle all month.
+Production is not that environment.
+''')
+@minValue(0)
+@maxValue(1)
+param larkWarmReplicas int = 1
+
+@description('''
 Shared secret proving a request reached harbor through one of our front ends.
 
 Harbor has a public hostname, so the forwarded client address is only believed
@@ -151,6 +167,47 @@ resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' existin
 }
 
 var connectionString = 'Host=${postgres.properties.fullyQualifiedDomainName};Port=5432;Database=${dbName};Username=${dbAdminUser};Password=${dbPassword};SSL Mode=Require;Trust Server Certificate=true'
+
+// KEDA does not speak the string above.
+//
+// That is an Npgsql keyword string: semicolon-separated, 'SSL Mode' with a
+// space, 'Trust Server Certificate'. KEDA's postgresql scaler hands its
+// connection parameter to libpq, which wants space-separated lowercase keys
+// and has no idea what 'SSL Mode' means. Passing the Npgsql string makes the
+// scaler fail to connect, report no metric, and leave lark at zero replicas --
+// so mail silently stops while the deployment, the app and every probe stay
+// green. That is the exact failure the old hardcoded minReplicas: 1 existed to
+// prevent, so it is worth a second rendering of the same credentials rather
+// than a reused secret that looks interchangeable and is not.
+var kedaConnectionString = 'host=${postgres.properties.fullyQualifiedDomainName} port=5432 dbname=${dbName} user=${dbAdminUser} password=${dbPassword} sslmode=require'
+
+// Both only exist when lark is allowed to sleep. Kept conditional so an
+// environment that keeps lark warm carries neither a second copy of the
+// password nor a scaler polling a query nothing reads.
+var larkKedaSecrets = larkWarmReplicas == 0
+  ? [ { name: 'db-keda', value: kedaConnectionString } ]
+  : []
+
+// The condition mirrors lark's own claim query, including next_attempt_at.
+// Counting every 'pending' row instead would hold the worker awake for as long
+// as one message sat in backoff -- which is both the opposite of the intent and
+// the most expensive possible way to be wrong.
+var larkScaleRules = larkWarmReplicas == 0 ? [
+  {
+    name: 'mail-is-waiting'
+    custom: {
+      type: 'postgresql'
+      metadata: {
+        query: 'SELECT count(*) FROM notify.messages WHERE status = \'pending\' AND (next_attempt_at IS NULL OR next_attempt_at <= now())'
+        targetQueryValue: '1'
+        activationTargetQueryValue: '0'
+      }
+      auth: [
+        { secretRef: 'db-keda', triggerParameter: 'connection' }
+      ]
+    }
+  }
+] : []
 
 var registryConfig = [
   {
@@ -338,9 +395,10 @@ resource atlas 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // ------------------------------------------------------------------- lark ---
-// No ingress at all, and never zero replicas. Nothing would wake it from zero,
-// and a queue with no worker is a queue that silently stops sending while
-// every dashboard reads green.
+// No ingress at all. Zero replicas is permitted only because the scale rule
+// above can wake it: a queue with no worker silently stops sending while every
+// dashboard reads green, so the replica floor and the rule that replaces it
+// have to arrive together or not at all.
 resource lark 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ca-lark-${environmentName}'
   location: location
@@ -350,7 +408,7 @@ resource lark 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: environment.id
     configuration: {
       registries: registryConfig
-      secrets: concat([dbSecret], sentrySecrets, awsSecrets)
+      secrets: concat([dbSecret], sentrySecrets, awsSecrets, larkKedaSecrets)
     }
     template: {
       containers: [
@@ -366,7 +424,11 @@ resource lark 'Microsoft.App/containerApps@2024-03-01' = {
           ], sentryEnv, awsEnv)
         }
       ]
-      scale: { minReplicas: 1, maxReplicas: 1 }
+      scale: {
+        minReplicas: larkWarmReplicas
+        maxReplicas: 1
+        rules: larkScaleRules
+      }
     }
   }
 }

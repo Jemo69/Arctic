@@ -42,6 +42,14 @@ param warmReplicas = int(empty(readEnvironmentVariable('WARM_REPLICAS', '1'))
   ? '1'
   : readEnvironmentVariable('WARM_REPLICAS', '1'))
 
+// Keep the mail worker running. Zero lets it sleep until a message is actually
+// queued, which only works because apps.bicep adds a scale rule when this is
+// zero. Same empty-string handling as warmReplicas above, and for the same
+// reason: int('') fails the deployment rather than the parameter.
+param larkWarmReplicas = int(empty(readEnvironmentVariable('LARK_WARM_REPLICAS', '1'))
+  ? '1'
+  : readEnvironmentVariable('LARK_WARM_REPLICAS', '1'))
+
 // Shared secret proving a request reached harbor through one of our front
 // ends. Empty means forwarded addresses are never believed, which is a coarser
 // rate limit rather than an absent one -- so a missing variable degrades
