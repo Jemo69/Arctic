@@ -1,3 +1,4 @@
 # MorganHacks.Harbor
 
-YARP config, token validation, rate limiting, request ID injection.
+YARP config, caller-supplied identity headers stripped before anything else
+sees them, rate limiting, correlation ID injection.

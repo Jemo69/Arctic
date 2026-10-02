@@ -43,6 +43,9 @@ the addresses that used to be right.
 
 ### 2. Is lark running, and does it think it can send?
 
+Staging or production — swap `rg-mh-staging`/`ca-lark-staging` for
+`rg-mh-prod`/`ca-lark-prod`:
+
 ```bash
 az containerapp logs show -g rg-mh-staging -n ca-lark-staging --tail 30 --type console
 ```
@@ -54,6 +57,20 @@ as they are set.
 
 Fix: set `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` on the
 environment and redeploy.
+
+If lark logs nothing at all — no container to even show logs for — check
+replica count before assuming it crashed. Lark stays at one replica by
+default, but `LARK_WARM_REPLICAS=0` turns on a KEDA PostgreSQL scale rule that
+lets it sleep until something is queued (PR #158). A worker scaled to zero
+looks identical to a crashed one from the Container Apps portal alone:
+
+```bash
+az containerapp show -g rg-mh-staging -n ca-lark-staging \
+  --query "properties.template.scale.{min:minReplicas,max:maxReplicas}"
+```
+
+`min: 0` means this mode is on for that environment and a few seconds of
+delay on the first message after idle is expected, not a fault.
 
 ### 3. Is the address suppressed?
 

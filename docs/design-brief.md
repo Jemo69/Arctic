@@ -24,8 +24,13 @@ There are three separate front ends and two audiences.
 | App | Audience | Where |
 |---|---|---|
 | **portaladmin** — the organizer console | ~20 organizers | `admin.morganhacks.com` |
-| **portalweb** — the public site + hacker portal | ~400 applicants | `morganhacks.com`, `/portal` |
+| **portalweb** — the hacker portal | ~400 applicants | `main-stg.morganhacks.com` in staging; no production host while the portal is off there |
 | **portalforms** — the public form renderer | anybody with a link | `forms.morganhacks.com` |
+
+`morganhacks.com` itself is a separate marketing site, outside Arctic and
+outside this brief — not portalweb under another name. Do not design it as
+though a change to portalweb's `(site)` routes reaches the address a flyer
+would print.
 
 Behind them are three services: **atlas** (the API — identity, applications,
 forms, campaigns), **harbor** (a reverse proxy), and **lark** (the mail

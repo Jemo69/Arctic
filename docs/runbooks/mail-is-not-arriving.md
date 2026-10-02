@@ -89,6 +89,7 @@ with it.
 ```bash
 aws sesv2 get-configuration-set-event-destinations \
   --configuration-set-name arctic-staging --profile morganhacks --region us-east-2
+# production's is arctic-production, same account and region
 ```
 
 A send only produces events when it names a configuration set that has an event
@@ -111,13 +112,22 @@ aws sns list-subscriptions-by-topic \
   --profile morganhacks --region us-east-2 --query "Subscriptions[].SubscriptionArn"
 ```
 
+Production's topic is `arctic-ses-events-production`, same account and
+region — same command with the topic name swapped.
+
 An ARN means confirmed. The literal string `PendingConfirmation` means the
 endpoint never answered — which is itself a useful signal, because confirming
 requires the webhook to verify the SNS signature and then fetch the
 `SubscribeURL`, so a confirmed subscription proves that path works.
 
-Staging, as of 2026-10-01: set `arctic-staging`, destination `sns-webhook`,
-subscription confirmed.
+As of 2026-10-01, both environments have this fully wired: configuration sets
+`arctic-staging` and `arctic-production`, each with an `sns-webhook`
+destination publishing BOUNCE/COMPLAINT/DELIVERY/REJECT/RENDERING_FAILURE to
+its own topic, each subscription confirmed and pointed at
+`https://admin-stg.morganhacks.com/api/webhooks/ses` (staging) or
+`https://admin.morganhacks.com/api/webhooks/ses` (production) — the console's
+host, not the public site's, because that is where the webhook endpoint
+lives.
 
 ---
 

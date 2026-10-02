@@ -412,31 +412,42 @@ header is being trusted from anybody and the limits are decoration.
 `Network__ForwardLimit` is already set in `apps.bicep` — 2 for atlas, 1 for
 harbor — and it does nothing on its own. It is the hop count, not the trust.
 
-## Cost: the services sleep
+## Cost: production stays warm, staging doesn't
 
-The web-facing services run at **zero replicas** by default. A request wakes
-one, which takes a few seconds; every request after that is normal. This is
-most of the reason an environment costs about $38/month rather than $185 — an
-always-on replica is billed for all 730 hours of a month whether or not anybody
-visits.
+`warmReplicas` defaults to **one**, not zero. The GitHub workflow falls back to
+`WARM_REPLICAS: ${{ vars.WARM_REPLICAS || '1' }}` and the `.bicepparam` files
+do the same, so an environment is warm unless something explicitly asks it to
+sleep. (This page used to say the opposite — scaling to zero was the default
+before production existed to need otherwise.)
 
-`lark` is the exception and stays at one replica. It polls the mail queue on a
-timer, so nothing would ever wake it, and a mail worker scaled to zero is a
-queue that silently never sends. It is most of the idle cost of the
-environment, and the way to remove it is a KEDA scaler on queue depth rather
-than a lower replica count.
+**Staging asks to sleep.** `WARM_REPLICAS=0` on the Staging GitHub environment
+lets atlas and harbor scale to zero; a request after an idle spell pays a cold
+start, measured at roughly 22 seconds. That is the right trade for an
+environment nobody is waiting on, and it is most of the reason staging costs
+less than production to run.
 
-### Turning it off for registration
+**Production does not.** It runs the default — atlas and harbor both kept at
+one replica minimum, up to `maxReplicas: 3` — because the person a cold start
+would hit is an applicant on a deadline, not a developer checking something
+still works. See the honest caveat in
+[`why-container-apps.md`](why-container-apps.md).
 
-A cold start is fine for an organizer opening the admin console. It is not fine
-for an applicant on a deadline. So for the weeks registration is open, and for
-the event weekend:
+`lark` is a separate question, because it has no ingress and nothing would ever
+wake a sleeping worker on its own. It stays at one replica in every
+environment unless `LARK_WARM_REPLICAS=0` is paired with the KEDA scale rule
+`apps.bicep` adds for exactly that case — added in PR #158, and built to wake a
+replica only when a message is actually due to send rather than counting every
+`pending` row and staying awake for whatever is sitting in backoff. Production
+does not set this: a mail worker idle overnight is cheap, and a queue with no
+worker is a queue that silently stops sending while every dashboard reads
+green.
 
-Set `WARM_REPLICAS` to `1` on the GitHub environment and redeploy. Unset it
-afterwards. Unset and empty both mean zero.
-
-That is roughly $30/month more while it is set, which is the right thing to
-spend it on.
+Measured today, across both environments: **about $116/month**. Postgres'
+12-month free-services grant covers exactly one `Standard_B1ms` server, and
+staging holds it — production's database is billed in full, which is most of
+the gap between them. A budget named `arctic-monthly` is set at **$140/month**,
+with alerts at 80%, 100%, and forecast 100%, so a runaway cost is visible
+before the invoice is.
 
 ### The logging cap
 

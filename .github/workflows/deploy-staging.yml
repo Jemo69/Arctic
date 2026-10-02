@@ -108,8 +108,19 @@ jobs:
 
           failed=0
           for app in portalweb portaladmin portalforms; do
+            # An arm each, and a default that says no.
+            #
+            # Only portalweb had one, and `want` is not cleared between
+            # iterations -- so portaladmin and portalforms silently reused
+            # whatever portalweb had been set to. Asking for portaladmin alone
+            # rebuilt nothing; asking for portalweb rebuilt all three. The
+            # default arm is there so the next app added to the loop fails
+            # closed rather than inheriting its neighbour's answer.
             case "$app" in
               portalweb)   want="${{ inputs.portalweb }}" ;;
+              portaladmin) want="${{ inputs.portaladmin }}" ;;
+              portalforms) want="${{ inputs.portalforms }}" ;;
+              *)           want=false ;;
             esac
             [ "$want" = "true" ] || continue
 

@@ -14,6 +14,6 @@ labels: bug
 
 ## Where
 
-- Environment: <!-- local / main-stg / production -->
-- Service: <!-- portalweb, atlas, lark, harbor, portaladmin -->
+- Environment: <!-- local / staging / production -->
+- Service: <!-- portalweb, portaladmin, portalforms, atlas, lark, harbor -->
 - Correlation ID, if you have one:

@@ -35,6 +35,11 @@ and a load balancer on top. A cluster cannot take advantage of the one property
 that makes this workload cheap — that nobody is using it at 4am in March.
 Container Apps scales the web-facing services to zero and a request wakes them.
 
+Measured now rather than estimated: two environments exist, in two regions,
+and one of them — production — deliberately gives up the zero-replica saving
+because it is live. Actual spend across both is about $116/month. The single
+hypothetical workload above landed in the same neighborhood as two real ones.
+
 ## The operational argument, which is the larger one
 
 **This team turns over every year.** That single fact decides it.
@@ -67,7 +72,8 @@ bit.
 ## The honest caveat
 
 Container Apps scaling to zero means the first request after an idle spell
-waits a few seconds while a replica starts. That is fine for an organizer
-opening an admin console and not fine for an applicant during registration,
-which is why `warmReplicas` exists — see
+waits for a cold start — measured at roughly 22 seconds against staging. That
+is fine for an organizer opening an admin console and not fine for an
+applicant on a deadline, which is why `warmReplicas` exists, and why
+production runs it at the default instead of staging's zero — see
 [deployments](deployments.md).

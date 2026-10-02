@@ -34,6 +34,41 @@ group somebody has to remember to create first.
 Keep `DB_PASSWORD` somewhere real. Bicep never reads it back, so losing it
 means resetting the admin password on the server.
 
+## What's deployed today
+
+| Resource group | Region | Holds |
+|---|---|---|
+| `rg-mh-shared` | `centralus` | the registry (`crmharctic`), and `id-mh-deploy` — the identity GitHub Actions authenticates as |
+| `rg-mh-staging` | `centralus` | `cae-mh-staging`, `psql-mh-staging`, the three apps, `caj-migrations-staging`, `log-mh-staging` |
+| `rg-mh-prod` | `eastus2` | the same shape, suffixed `-prod` |
+
+Subscription `45944a03-563f-42c2-83f7-df274ae5ae1a`, Pay-As-You-Go, in the
+tenant behind `morganhacks2022@gmail.com`. `naming.md` has the full naming
+convention; the next section has why the regions differ.
+
+## Two regions, one registry
+
+`location` and `sharedLocation` are separate parameters on purpose. The
+registry is shared across every environment and cannot move once created — a
+resource cannot change region — while each environment's own resources can
+live wherever that environment needs to be. Both `.bicepparam` files default
+`sharedLocation` to `centralus`; only `location` differs between them, and
+`naming.md` has the reasoning for why production's is `eastus2` and staging's
+is not.
+
+Conflating the two was a real failure, not a hypothetical one: it is why
+production's first deploy broke at the registry stage with
+`InvalidResourceLocation` the moment `location` was pointed at `eastus2`. See
+[`docs/runbooks/first-production-deploy.md`](../../docs/runbooks/first-production-deploy.md)
+for the full sequence.
+
+`registryName` is a parameter too, read from `REGISTRY_NAME` and defaulting to
+the shared `crmharctic`. There is only one real reason to override it: an
+environment that cannot share that registry at all, because a managed
+identity cannot be granted `AcrPull` on a registry in a different tenant or
+subscription. That is a new registry to push images to, not just a new
+parameter value.
+
 ## Why Bicep and not a shell script
 
 A script has to be told *how* to reach the desired state, and gets idempotency
@@ -82,17 +117,31 @@ sequence, not a state.
 
 | | Ingress | Replicas |
 |---|---|---|
-| `harbor` | external — the only thing published | 1–3 |
-| `atlas` | internal — harbor is the only path in | 1–3 |
-| `lark` | none at all | 1, never 0 |
+| `harbor` | external — the only thing published | 0–3 |
+| `atlas` | internal — harbor is the only path in | 0–3 |
+| `lark` | none at all | 0–1 |
 | `migrations` | a job | on demand |
 
-`lark` never scales to zero. It has no ingress, so nothing would wake it, and a
-queue with no worker is a queue that silently stops sending while every
-dashboard reads green.
+Minimum replicas is `warmReplicas` (atlas, harbor) or `larkWarmReplicas`
+(lark), and both can be zero — but `lark` scaling to zero is only safe
+together with the KEDA scale rule `apps.bicep` adds when
+`LARK_WARM_REPLICAS=0`. Without that rule, nothing has any reason to wake a
+worker that only ever polls a queue on a timer, and a queue with no worker is
+one that silently stops sending while every dashboard reads green. Production
+does not set either to zero; staging sets `WARM_REPLICAS=0` and cold-starts
+atlas and harbor in about 22 seconds. See
+[`docs/architecture/deployments.md`](../../docs/architecture/deployments.md#cost-production-stays-warm-staging-doesnt)
+for the cost reasoning.
 
 The registry lives in its own resource group so deleting an environment cannot
 take the images with it — including the image a rollback needs.
+
+**Noise you will see and can ignore:** every container app in both
+environments logs `ScaledObjectCheckFailed: no triggers defined in the
+ScaledObject` roughly every ten minutes, since 2026-09-12. Container Apps
+creates a KEDA `ScaledObject` for every app, and one with no scale rule — which
+is most of them, since only `lark` ever gets one — has no triggers to report
+on. It is not evidence of anything breaking.
 
 ## Rolling back
 
@@ -155,29 +204,32 @@ subnet, which does not exist until the environment does.
 which is now the weakest thing here: any Azure tenant's resources can reach the
 server, though they still need the password. The fix is VNet integration with a
 private endpoint, and it means recreating the Container Apps environment —
-VNet cannot be added to an existing one. Worth doing before production carries
-real applicant data; not worth rebuilding staging for on its own.
+VNet cannot be added to an existing one. This was written as "worth doing
+before production carries real applicant data"; production now does, so the
+deadline this was waiting on has already passed. Not worth rebuilding staging
+for on its own.
 
 ## On subscriptions
 
-A Visual Studio subscription's monthly credit is **for development and testing
-only** under its terms. Fine for staging; not a licence to run registration on
-it, and being cut off during registration week is the worst version of that
-mistake.
-
-Production needs a pay-as-you-go subscription or the sponsorship credits in
-`doc-starter/morganhacks-microsoft-sponsorship.md`. That doc also flags two
-shorter paths worth trying first: whether Morgan State already has an Azure
-education subscription, and — if MorganHacks is MLH-affiliated — that MLH has
-existing Azure relationships and credits flow through that channel routinely.
+**Resolved:** this runs on a **Pay-As-You-Go** subscription
+(`45944a03-563f-42c2-83f7-df274ae5ae1a`), in the tenant behind
+`morganhacks2022@gmail.com` — not a Visual Studio subscription, whose monthly
+credit is for development and testing only under its terms and would not have
+been a licence to run registration on. That question used to be open; it no
+longer is.
 
 **Own these resources with the MorganHacks account, not a personal one.** Same
 rule as the Vercel projects and `tech@morganhacks.com`: infrastructure tied to
 somebody's student account is infrastructure that leaves when they graduate.
 
-## Four things the first real deploy found
+## Things the first real deploys found
 
-Worth recording, because none of them show up in a test.
+Worth recording, because none of them show up in a test. The first four are
+from staging's first deploy; the rest are from production's — which also hit
+problems unique to being a second environment in a second region, and which
+has its own page,
+[`docs/runbooks/first-production-deploy.md`](../../docs/runbooks/first-production-deploy.md),
+for the full sequence rather than the short version below.
 
 **`eastus` is capacity-restricted on this subscription.** Postgres provisioning
 is refused there outright, and the error is `Version should be in: []` rather
@@ -198,6 +250,18 @@ region means deleting the record first:
 configured" therefore has to mean the secret is absent, not blank — otherwise
 the thing that lets this run with no accounts is the thing that stops it
 deploying.
+
+**Central US can refuse to create a new Container Apps environment outright
+(`AKSCapacityHeavyUsage`).** Not a configuration mistake and not visible to
+`what-if` — capacity is only evaluated at apply time. There is no setting that
+fixes it, only a different region, which is part of why production ended up in
+`eastus2`.
+
+**Deleting a resource group deletes every role assignment scoped to it.** A
+grant made directly on a resource group is only as durable as that resource
+group is — recreating the group, for a region move or anything else, does not
+bring the grant back with it. This is the real reason the deploy identity's
+`User Access Administrator` grant moved to subscription scope, below.
 
 ## Deploys run in CI, not on a laptop
 
@@ -239,18 +303,25 @@ What the deploy identity may do:
 | Grant | Scope | Why |
 |---|---|---|
 | Contributor | subscription | creates the resource groups and everything in them |
-| User Access Administrator | `rg-mh-shared` | grants AcrPull to each environment's pull identity |
-| User Access Administrator | `rg-mh-staging`, `rg-mh-prod` | grants blob access on the resumes account |
+| User Access Administrator | subscription | grants AcrPull on the shared registry, and Storage Blob Data Contributor on each environment's resumes account |
 | AcrPush | the registry | pushes images; Contributor does not cover data-plane push |
 
-**The environment-scoped User Access Administrator grants are new and have to
-be made by hand once per environment.** `platform.bicep` now assigns Storage
-Blob Data Contributor on the resumes account, and Contributor cannot create
-role assignments — so without this the platform pass fails with
-`AuthorizationFailed` on the assignment and nothing else. The grant is narrowed
-to the environment's own group for the same reason the registry one is narrowed
-to `rg-mh-shared`: the ability to hand out access is the one permission worth
-being stingy with.
+**`platform.bicep` assigns Storage Blob Data Contributor on the resumes
+account, and Contributor cannot create role assignments** — without this
+grant the platform pass fails with `AuthorizationFailed` on the assignment and
+nothing else, which is also exactly what happens if the grant is missing on a
+resource group that does not exist yet, i.e. a brand new environment.
+
+This grant used to be made per resource group — `rg-mh-shared` for the
+registry, then each environment's own group as it was created. It is at
+subscription scope now, because the per-group version did not survive a
+resource group being deleted and recreated: that happened during production's
+first deploy, when a capacity problem forced `rg-mh-prod` to be rebuilt in a
+different region, and the grant made on the old group vanished with it. A
+subscription-scope grant has nothing to lose when any one resource group
+goes away. Scoped this high, it is still the one permission worth being
+stingy with — which is why it stops at *this* subscription and grants nothing
+else.
 
 ### Configuration
 
@@ -260,6 +331,9 @@ Repository variables, because none of them are secrets: `AZURE_CLIENT_ID`,
 Environment secrets, set per environment: `DB_PASSWORD`, and later
 `SENTRY_DSN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
 
-**Production deliberately has no `DB_PASSWORD` yet.** There is no production
-database, and it must not inherit staging's. Leaving it unset makes creating
-one a deliberate act rather than something that happens by copying.
+**Production's `DB_PASSWORD` was generated fresh for it, never copied from
+staging.** Before production existed, this secret was deliberately left unset
+on its GitHub environment, specifically so that creating a production
+database password was a decision somebody made rather than something that
+happened by copying staging's. The same rule applies to any environment added
+after this one.
