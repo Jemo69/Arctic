@@ -134,6 +134,7 @@ jobs:
           CONSOLE_BASE_URL: ${{ vars.CONSOLE_BASE_URL }}
           WARM_REPLICAS: ${{ vars.WARM_REPLICAS || '1' }}
           LARK_WARM_REPLICAS: ${{ vars.LARK_WARM_REPLICAS || '1' }}
+          REGISTRY_NAME: ${{ vars.REGISTRY_NAME || 'crmharctic' }}
           # Empty on purpose when the variable is unset: features.json then
           # decides, which is not the same as being told 'false'.
           ENABLE_HACKER_PORTAL_FEATURE: ${{ vars.ENABLE_HACKER_PORTAL_FEATURE }}
@@ -157,6 +158,7 @@ jobs:
           CONSOLE_BASE_URL: ${{ vars.CONSOLE_BASE_URL }}
           WARM_REPLICAS: ${{ vars.WARM_REPLICAS || '1' }}
           LARK_WARM_REPLICAS: ${{ vars.LARK_WARM_REPLICAS || '1' }}
+          REGISTRY_NAME: ${{ vars.REGISTRY_NAME || 'crmharctic' }}
           # Empty on purpose when the variable is unset: features.json then
           # decides, which is not the same as being told 'false'.
           ENABLE_HACKER_PORTAL_FEATURE: ${{ vars.ENABLE_HACKER_PORTAL_FEATURE }}

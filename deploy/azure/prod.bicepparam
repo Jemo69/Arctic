@@ -7,7 +7,14 @@ using 'main.bicep'
 
 param environmentName = 'prod'
 param location = 'centralus'
-param registryName = 'crmharctic'
+// Which registry the images come from.
+//
+// Default is the shared one, which is what both environments used while they
+// lived in the same subscription. An environment in a different subscription
+// needs its own: a managed identity cannot be granted AcrPull on a registry in
+// another tenant, because role assignments do not cross directories. Set
+// REGISTRY_NAME on that environment.
+param registryName = readEnvironmentVariable('REGISTRY_NAME', 'crmharctic')
 
 param imageTag = readEnvironmentVariable('IMAGE_TAG')
 param dbPassword = readEnvironmentVariable('DB_PASSWORD')
