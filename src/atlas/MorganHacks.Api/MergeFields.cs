@@ -11,6 +11,9 @@ using MorganHacks.Lark.Data.Domain;
 // ColumnKind, and importing both makes every use of it ambiguous.
 using Form = MorganHacks.Applications.Forms.Form;
 using FormVersion = MorganHacks.Applications.Forms.FormVersion;
+using AnswerColumns = MorganHacks.Applications.Forms.AnswerColumns;
+using AnswerStorage = MorganHacks.Applications.Forms.AnswerStorage;
+using FieldType = MorganHacks.Applications.Forms.FieldType;
 
 namespace MorganHacks.Api;
 
@@ -365,6 +368,76 @@ public static class MergeFields
     /// no answerable ones look the same from here, and both are honest.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Why a form's questions did not all become placeholders.
+    /// </summary>
+    /// <remarks>
+    /// Counts rather than names, because this answers one question an author
+    /// has while looking at a short menu: whether the questions were considered
+    /// at all. A standard application form is the case that needs it -- every
+    /// question on it is a column, so none of them become
+    /// <c>{{form.answer.*}}</c> and the menu gains three fields and nothing
+    /// else. That is correct and reads exactly like a broken picker.
+    /// <para>
+    /// <c>Withheld</c> is counted apart from <c>AlreadyFields</c> because they
+    /// are different sentences. One says the answer is already offered under
+    /// another name; the other says it is deliberately not offered at all, for
+    /// the reasons <see cref="ApplicantColumns.Withheld"/> gives -- and an
+    /// author told only "already a field" would go looking for a name that is
+    /// never going to be there.
+    /// </para>
+    /// </remarks>
+    public sealed record AnswerSummary(
+        int Offered, int AlreadyFields, int Withheld, int Files);
+
+    /// <summary>Classifies every published question of the chosen form.</summary>
+    public static AnswerSummary SummarizeAnswers(
+        Form? paper, FormVersion? published, IReadOnlyList<AnswerQuestion> offered)
+    {
+        if (paper is null || published is null)
+        {
+            return new AnswerSummary(0, 0, 0, 0);
+        }
+
+        var already = 0;
+        var withheld = 0;
+        var files = 0;
+
+        foreach (var field in published.Fields)
+        {
+            // Not a question. A section is a page heading, and counting it
+            // would make the arithmetic on screen fail to add up.
+            if (field.Type == FieldType.Section)
+            {
+                continue;
+            }
+
+            if (field.Type == FieldType.File)
+            {
+                files++;
+                continue;
+            }
+
+            if (!paper.IsApplication
+                || field.Storage != AnswerStorage.Column
+                || !AnswerColumns.TryKindOf(field.Column, out _))
+            {
+                continue;
+            }
+
+            if (ApplicantColumns.Withheld.ContainsKey(field.Column!))
+            {
+                withheld++;
+            }
+            else
+            {
+                already++;
+            }
+        }
+
+        return new AnswerSummary(offered.Count, already, withheld, files);
+    }
+
     public static IReadOnlyList<AnswerQuestion> QuestionsOn(
         Form? paper, FormVersion? published) =>
         paper is null || published is null

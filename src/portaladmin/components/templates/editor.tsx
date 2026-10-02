@@ -19,6 +19,7 @@ import { useDraft, type DraftHandle } from "./use-draft";
 import { usePreview } from "./use-preview";
 import { useSave } from "./use-save";
 import { loadPlaceholders } from "@/app/templates/actions";
+import type { AnswerSummary } from "@/app/templates/api";
 import type { EditorStep, FormChoice, Placeholder, Template } from "./types";
 
 const loadDesignWorkspace = () => import("./design-workspace");
@@ -83,6 +84,9 @@ export function Editor({
   // keystroke. Replaced when the author binds a form, which adds a group the
   // page could not have known about when it rendered.
   const [names, setNames] = useState(available);
+  // Why the chosen form offered the questions it did. Null until a form is
+  // chosen, which the panel says differently from a form that offered none.
+  const [answers, setAnswers] = useState<AnswerSummary | null>(null);
 
   const handle = useDraft(template, names, { id: personId, email: defaultRecipient, canManage });
 
@@ -102,7 +106,9 @@ export function Editor({
     let current = true;
 
     loadPlaceholders(chosenForm === "" ? null : chosenForm).then((result) => {
-      if (current && result.ok) setNames(result.items);
+      if (!current || !result.ok) return;
+      setNames(result.items);
+      setAnswers(result.answers);
     });
 
     return () => {
@@ -205,6 +211,7 @@ export function Editor({
               available={names}
               errors={saving.fieldErrors}
               forms={forms}
+              answers={answers}
             />
           </fieldset>
           <aside className={settings.aside}>
