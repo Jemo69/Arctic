@@ -68,7 +68,11 @@ say "2/5  Images"
 if [[ "${SKIP_PUSH:-}" == "1" ]]; then
     echo "  skipped (SKIP_PUSH=1) — deploying tag ${IMAGE_TAG} as it already is"
 else
-    "$HERE/push-images.sh" "$ENVIRONMENT" "$IMAGE_TAG"
+    # Same registry the template is about to reference. push-images.sh reads
+    # REGISTRY, the template reads REGISTRY_NAME; letting them disagree would
+    # push to one registry and deploy from another, which fails at pull time
+    # with nothing in the build log explaining why.
+    REGISTRY="${REGISTRY_NAME:-crmharctic}" "$HERE/push-images.sh" "$ENVIRONMENT" "$IMAGE_TAG"
 fi
 
 say "3/5  Platform  (Postgres, apps environment, migration job)"
