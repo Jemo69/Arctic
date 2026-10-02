@@ -103,6 +103,11 @@ when lower idle hosting usage is more important than cold-start latency.
 @maxValue(3)
 param warmReplicas int = 1
 
+@description('How many replicas of the mail worker to keep running. See apps.bicep; zero is only safe with the scale rule that module adds.')
+@minValue(0)
+@maxValue(1)
+param larkWarmReplicas int = 1
+
 @description('Whether the applicant portal is served. Empty leaves features.json to decide.')
 param enableHackerPortalFeature string = ''
 
@@ -234,6 +239,7 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     consoleBaseUrl: consoleBaseUrl
     formsBaseUrl: formsBaseUrl
     warmReplicas: warmReplicas
+    larkWarmReplicas: larkWarmReplicas
     enableHackerPortalFeature: enableHackerPortalFeature
     proxySecret: proxySecret
     pullIdentityId: pullIdentity.outputs.id
