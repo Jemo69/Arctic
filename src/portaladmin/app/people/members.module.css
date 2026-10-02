@@ -380,6 +380,8 @@
   }
 }
 
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .table {
     min-width: 510px;

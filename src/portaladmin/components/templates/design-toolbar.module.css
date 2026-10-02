@@ -216,11 +216,15 @@
   line-height: 1.6;
 }
 
+/* 72rem, 8rem past --bp-xl (64rem); moving it would change where this
+   reflows. */
 @media (max-width: 72rem) {
   .testButton span { display: none; }
   .testButton { width: 40px; padding: 0; }
 }
 
+/* 38rem, 2rem short of --bp-md (40rem); moving it would change where this
+   reflows. */
 @media (max-width: 38rem) {
   .divider { display: none; }
   .toolbar { gap: 4px; }

@@ -113,6 +113,8 @@
   line-height: 1.6;
 }
 
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .page {
     gap: clamp(20px, 5svh, 40px);

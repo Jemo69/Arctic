@@ -277,6 +277,9 @@
 .surface form > :global(.question) { margin-inline: 0; }
 .surface form > :global(.summary:last-child) { margin: 24px 0; }
 
+/* 1100px is the sidebar's own long-standing threshold, not a canon value —
+   see libs/ui/tokens.css. It would sit at --bp-xl (64rem / 1024px), but
+   moving it collapses the sidebar 76px earlier, which is a layout decision. */
 @media (max-width: 1100px) {
   .surface :global(.page) { gap: 48px; grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
 }
@@ -289,7 +292,7 @@
   .deadline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-top: 20px; padding-top: 18px; }
   .surface :global(.step) { padding: 18px 0 20px; }
 }
-@media (max-width: 480px) {
+@media (max-width: 30rem) {
   .surface, .surface:where(:has(:global(#mlh-trust-badge))) { padding: 104px 24px 32px; }
   .surface :global(.formHeaderImage) { max-width: min(216px, 100%); margin-bottom: 24px; }
   .intro { margin: 0 0 32px; }
@@ -459,6 +462,8 @@
   .surface.cards:where(:has(:global(#mlh-trust-badge))):has(:global(.formHeaderImage)) { padding-top: 12px; }
   .cards:where(:has(:global(#mlh-trust-badge))) :global(.formHeaderImage) { width: calc(100% - clamp(60px, 7vw, 90px) - 24px); }
 }
+/* 600px is 2.5rem off --bp-md (40rem / 640px) — too far to call the same
+   breakpoint, so left as its own number; moving it is a layout decision. */
 @media (max-width: 600px) {
   .cards, .cards:has(:global(.page)) { padding-inline: 16px; }
   .cards :global(.card-intro-content), .cards .intro :global(.masthead), .cards :global(.question) { padding: 20px 18px; }
@@ -469,7 +474,7 @@
   .cards :global(.card-required) { padding: 14px 18px; }
   .cards :global(.page-progress) { max-width: none; }
 }
-@media (max-width: 480px) {
+@media (max-width: 30rem) {
   .surface.cards:where(:has(:global(#mlh-trust-badge))) { padding-top: 96px; }
   .cards:where(:has(:global(#mlh-trust-badge))) :global(.formHeaderImage) { width: calc(100% - 60px); }
 }

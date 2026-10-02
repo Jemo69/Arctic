@@ -443,7 +443,8 @@ a {
   }
 }
 
-@media (max-width: 760px) {
+/* 760px is 8px off --bp-lg (48rem / 768px) — the same breakpoint, rounded. */
+@media (max-width: 48rem) {
   /* The flanking rules need horizontal room either side of the label to read
      as rules. With a label this long there is none left and they collapse to
      slivers, so drop them and let the label centre on its own. Tracking comes

@@ -71,6 +71,8 @@
   .columns { gap: 30px; }
   .tableHead, .row { gap: 20px; }
 }
+/* 53.125rem, 5.125rem past --bp-lg (48rem); moving it would change where
+   this reflows. */
 @media (max-width: 850px) {
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .permissionLayout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
@@ -83,6 +85,8 @@
   .tableHead > :nth-child(3), .row > :nth-child(3) { display: none; }
   .table[data-kind="permissions"] .tableHead > :nth-child(3), .table[data-kind="permissions"] .row > :nth-child(3) { display: block; }
 }
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .pageHeader { align-items: flex-start; gap: 16px; }
   .pageHeader h1 { font-size: 24px; }

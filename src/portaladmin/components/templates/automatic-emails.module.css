@@ -187,7 +187,9 @@
   gap: 8px;
 }
 
-@media (max-width: 720px) {
+/* 45rem, 3rem past --bp-lg (48rem); moving it would change where this
+   reflows. */
+@media (max-width: 45rem) {
   /* The template key goes first, like the value column next door. On a narrow
      screen what somebody is looking for is which occasion the row is about and
      whether it is on; which template it sends is one tap away in the form. */

@@ -337,6 +337,8 @@
   clip-path: inset(50%);
 }
 
+/* 68rem, 4rem past --bp-xl (64rem); moving it would change where this
+   reflows. */
 @media (max-width: 68rem) {
   .grid {
     grid-template-columns: minmax(0, 1fr);

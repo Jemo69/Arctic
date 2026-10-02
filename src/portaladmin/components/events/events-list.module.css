@@ -466,12 +466,16 @@
   outline: none;
 }
 
+/* 100rem, 36rem past --bp-xl (64rem); a deliberate ultra-wide threshold, not
+   close enough to any canon value to be the same breakpoint. */
 @media (min-width: 100rem) {
   .details {
     max-width: 1280px;
   }
 }
 
+/* 62rem, 2rem short of --bp-xl (64rem); moving it would change where this
+   reflows. */
 @media (max-width: 62rem) {
   .details {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -485,6 +489,8 @@
   }
 }
 
+/* 42rem, 2rem past --bp-md (40rem); moving it would change where this
+   reflows. */
 @media (max-width: 42rem) {
   .header {
     gap: 14px;

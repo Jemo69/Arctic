@@ -1424,6 +1424,8 @@
   }
 }
 
+/* 65.625rem, 1.625rem past --bp-xl (64rem); moving it would change where
+   this reflows. */
 @media (max-width: 1050px) {
   .reviewLayout {
     grid-template-columns: minmax(0, 1fr) 280px;
@@ -1439,6 +1441,8 @@
   }
 }
 
+/* 62.5rem, 1.5rem past --bp-xl (64rem); moving it would change where this
+   reflows. */
 @media (max-width: 1000px) {
   .recipientsLayout {
     grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
@@ -1458,6 +1462,8 @@
   }
 }
 
+/* 56.25rem, 6.25rem short of --bp-xl (64rem); moving it would change where
+   this reflows. */
 @media (max-width: 900px) {
   .stepsList {
     gap: 8px;
@@ -1476,7 +1482,9 @@
   }
 }
 
-@media (max-width: 800px) {
+/* 50rem, 2rem past --bp-lg (48rem); moving it would change where this
+   reflows. */
+@media (max-width: 50rem) {
   .header {
     align-items: start;
     flex-wrap: wrap;
@@ -1534,7 +1542,9 @@
   }
 }
 
-@media (max-width: 760px) {
+/* 760px is 8px off --bp-lg (48rem/768px) -- the same breakpoint written
+   twice. */
+@media (max-width: 48rem) {
   .recipientsLayout {
     grid-template-columns: 1fr;
     gap: 32px;
@@ -1565,6 +1575,8 @@
   }
 }
 
+/* 42.5rem, 2.5rem past --bp-md (40rem); moving it would change where this
+   reflows. */
 @media (max-width: 680px) {
   .steps {
     padding-bottom: 14px;
@@ -1600,6 +1612,8 @@
   }
 }
 
+/* 33.75rem, 3.75rem past --bp-sm (30rem); moving it would change where this
+   reflows. */
 @media (max-width: 540px) {
   .header {
     margin-top: 20px;
@@ -1699,6 +1713,8 @@
   }
 }
 
+/* 26.25rem, 3.75rem short of --bp-sm (30rem); moving it would change where
+   this reflows. */
 @media (max-width: 420px) {
   .recipientMetrics {
     gap: 24px;

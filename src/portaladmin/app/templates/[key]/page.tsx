@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { Editor } from "@/components/templates/editor";
+import { NeedsRoom } from "@/components/ui/needs-room";
 import { readPageData } from "@/lib/page-data";
 import { Shell } from "../../shell";
 import { readFormChoices, readPlaceholders, readTemplate } from "../api";
@@ -73,16 +74,17 @@ export default async function TemplatePage({
 
   return (
     <Shell personId={person.personId}>
-
-      <Editor
-        key={`${person.personId}:${template.key}`}
-        personId={person.personId}
-        template={template}
-        defaultRecipient={person.email ?? ""}
-        canManage={person.permissions.has("email.manage_templates")}
-        available={names.ok ? names.items : null}
-        forms={forms.ok ? forms.forms : null}
-      />
+      <NeedsRoom back="/templates" backLabel="Templates">
+        <Editor
+          key={`${person.personId}:${template.key}`}
+          personId={person.personId}
+          template={template}
+          defaultRecipient={person.email ?? ""}
+          canManage={person.permissions.has("email.manage_templates")}
+          available={names.ok ? names.items : null}
+          forms={forms.ok ? forms.forms : null}
+        />
+      </NeedsRoom>
     </Shell>
   );
 }

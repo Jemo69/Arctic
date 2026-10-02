@@ -57,7 +57,7 @@ button.remove:hover { color: var(--stop); }
 .modal button:focus-visible, .add:focus-visible { outline: none; }
 .modal button:disabled { opacity: .5; }
 .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (max-width: 480px) {
+@media (max-width: 30rem) {
   .modal { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 20px; }
   .modalHeader, .body { padding: 18px; }
   .actions { padding: 14px 18px; flex-wrap: wrap; }

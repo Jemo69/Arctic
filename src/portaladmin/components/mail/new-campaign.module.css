@@ -47,6 +47,8 @@
 .continue:hover:not(:disabled) { filter: brightness(1.1); }
 .dialog button:disabled { opacity: .5; cursor: default; }
 .dialog button:focus-visible, .dialog a:focus-visible { outline: none; }
+/* 42.5rem, 2.5rem past --bp-md (40rem); moving it would change where this
+   reflows. */
 @media (max-width: 680px) {
   .dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 20px; }
   .header { padding: 24px 22px 20px; }

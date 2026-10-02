@@ -733,6 +733,8 @@ button.questionSummary { display: flex; flex-direction: column; align-items: str
 @media (max-width: 48rem) {
   :global(main#main-content):has(> .builder) { height: calc(100dvh - 56px); }
 }
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where the
+   builder header reflows. */
 @media (max-width: 600px) {
   .headerNavigation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   .head { margin-top: 16px; margin-bottom: 22px; gap: 20px; }
@@ -784,6 +786,8 @@ button.headerIcon:disabled { color: var(--faint); opacity: .4; cursor: default; 
 .summaryHeading, .label, .previewTitle, .askedLabel, .pageHeading { font-family: var(--form-font, inherit); }
 .summaryHeading, .label { font-size: calc(var(--form-font-size, 14px) + 2px); }
 .summaryOptions > span, .summaryAnswer, .answerLine, .summaryHelp, .previewBody, .preview input, .preview textarea, .preview select, .askedLabel, .choice, .consent { font-family: var(--form-font, inherit); font-size: var(--form-font-size, 14px); }
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .quickActions { grid-column: 1 / -1; justify-content: flex-end; border: 0; padding: 0; margin: -4px 0; }
 }
@@ -822,9 +826,13 @@ button.dragHandle:disabled { visibility: hidden; }
 .dragPreview svg { flex: none; color: var(--muted); }
 .dragPreview span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dragInstructions { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+/* 65.625rem, 1.625rem past --bp-xl (64rem); moving it would change where
+   this reflows. */
 @media (max-width: 1050px) {
   .canvas { padding-top: 58px; }
 }
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .card[data-active="true"] { padding-top: 34px; }
   button.questionSummary { padding-top: 32px; }
@@ -907,6 +915,8 @@ button.dragHandle:disabled { visibility: hidden; }
 .publishChanges { display: grid; flex: none; gap: 10px; padding: 18px 22px; border-top: 1px solid var(--line-soft); }
 .publishChanges p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; text-align: center; }
 .publishChanges button { width: 100%; min-height: 40px; font-size: 12px; }
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .publishSplit { width: 100%; }
   .publishAction { flex: 1; min-width: 0; padding-inline: 8px; }
@@ -930,6 +940,8 @@ button.dragHandle:disabled { visibility: hidden; }
 .recovery p { margin: 0; color: var(--muted); }
 .recovery > div { display: flex; flex-wrap: wrap; gap: 8px; }
 
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .builder[data-preview="true"] .headerNavigation { display: flex; flex-wrap: wrap; gap: 12px; }
   .previewNavigation { font-size: 14px; gap: 0; }

@@ -83,7 +83,9 @@
   .search { width: 220px; }
   .stats { gap: 8px; }
 }
-@media (max-width: 800px) {
+/* 50rem, 2rem past --bp-lg (48rem); moving it would change where this
+   reflows. */
+@media (max-width: 50rem) {
   .toolbar { align-items: stretch; flex-wrap: wrap; gap: 12px; }
   .tools { flex: 1 1 100%; }
   .search { flex: 1; width: auto; }
@@ -94,6 +96,8 @@
   .table thead th:nth-child(3) { width: 31%; }
   .table thead th:last-child { width: 10%; }
 }
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .header { align-items: flex-start; gap: 14px; margin-bottom: 24px; }
   .header h1 { font-size: 24px; }

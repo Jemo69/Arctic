@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft01Icon, Layout01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
+import { NeedsRoom } from "@/components/ui/needs-room";
 import styles from "@/components/mail/mail.module.css";
 import { Sending } from "@/components/mail/sending";
 import { CampaignDraft } from "@/components/mail/campaign-draft";
@@ -76,21 +77,23 @@ export default async function Campaign({
           <Link href="/mail"><Icon icon={ArrowLeft01Icon} size={17} />Email Campaign</Link>
           <span aria-hidden="true">/</span><span>Campaign</span>
         </nav>
-        <CampaignDraft
-          key={campaign.id}
-          campaign={campaign}
-          content={analytics.content}
-          available={fields.ok ? fields.items : null}
-          forms={forms.forms}
-          events={forms.events}
-          audienceError={forms.error}
-          me={person.personId}
-          canSend={person.permissions.has("email.send_broadcast")}
-          save={saveCampaignSettings.bind(null, id)}
-          preview={previewRecipients.bind(null, id)}
-          send={sendNow.bind(null, id)}
-          loadQuestions={loadFormQuestions}
-        />
+        <NeedsRoom back="/mail" backLabel="Email Campaign">
+          <CampaignDraft
+            key={campaign.id}
+            campaign={campaign}
+            content={analytics.content}
+            available={fields.ok ? fields.items : null}
+            forms={forms.forms}
+            events={forms.events}
+            audienceError={forms.error}
+            me={person.personId}
+            canSend={person.permissions.has("email.send_broadcast")}
+            save={saveCampaignSettings.bind(null, id)}
+            preview={previewRecipients.bind(null, id)}
+            send={sendNow.bind(null, id)}
+            loadQuestions={loadFormQuestions}
+          />
+        </NeedsRoom>
       </Shell>
     );
   }
