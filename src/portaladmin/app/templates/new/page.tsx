@@ -1,4 +1,5 @@
 import { Editor } from "@/components/templates/editor";
+import { NeedsRoom } from "@/components/ui/needs-room";
 import { readPageData } from "@/lib/page-data";
 import { Shell } from "../../shell";
 import { readFormChoices, readPlaceholders } from "../api";
@@ -51,15 +52,17 @@ export default async function NewTemplate({
 
   return (
     <Shell personId={person.personId}>
-      <Editor
-        key={`${person.personId}:new`}
-        personId={person.personId}
-        template={null}
-        defaultRecipient={person.email ?? ""}
-        canManage
-        available={names.ok ? names.items : null}
-        forms={forms.ok ? forms.forms : null}
-      />
+      <NeedsRoom back="/templates" backLabel="Templates">
+        <Editor
+          key={`${person.personId}:new`}
+          personId={person.personId}
+          template={null}
+          defaultRecipient={person.email ?? ""}
+          canManage
+          available={names.ok ? names.items : null}
+          forms={forms.ok ? forms.forms : null}
+        />
+      </NeedsRoom>
     </Shell>
   );
 }

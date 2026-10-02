@@ -38,6 +38,35 @@
 
   --focus: #003970;
 
+  /* ------------------------------------------------------------ widths ---
+     The breakpoints, named once.
+
+     These cannot be used in a media query. Custom properties are not
+     available to `@media`, so `@media (max-width: var(--bp-lg))` silently
+     never matches -- which is worse than not having them, because it looks
+     right. Write the literal rem value and keep this block as the list of
+     which literals are allowed.
+
+     They exist as properties anyway because JavaScript and container queries
+     can read them, and a component that needs to agree with the CSS should
+     read the same number rather than repeat it.
+
+     Four, because the apps were using eleven. A survey of every media query
+     across the three front ends found 48rem, 600px, 760px, 1100px, 64rem,
+     420px, 30rem, 680px, 700px, 40rem and more -- the same intent written in
+     two units and four roundings, so one component reflowed at 700px and the
+     one beside it at 768px. That gap is what makes a window narrowed "a bit"
+     look broken rather than smaller. */
+  --bp-sm: 30rem;   /*  480px — a phone held upright */
+  --bp-md: 40rem;   /*  640px — a large phone, a small tablet */
+  --bp-lg: 48rem;   /*  768px — a tablet, or a half-screen window */
+  --bp-xl: 64rem;   /* 1024px — a laptop, and the width the tables assume */
+
+  /* 1100px appears seventeen times and is the sidebar's own threshold, chosen
+     before this list existed. It belongs at --bp-xl; it is left alone here
+     rather than moved blind, because collapsing a sidebar 76px earlier is a
+     layout decision and not a tidy-up. */
+
   /* The one pair in this file that does not flip with the theme.
    *
    * A scanned code is read by a camera against a standard that assumes dark

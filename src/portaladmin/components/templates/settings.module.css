@@ -676,6 +676,8 @@
   padding-top: 22px;
 }
 
+/* 72rem, 8rem past --bp-xl (64rem); moving it would change where this
+   reflows. */
 @media (max-width: 72rem) {
   .grid {
     gap: 32px;
@@ -683,6 +685,8 @@
 
 }
 
+/* 60rem, 4rem short of --bp-xl (64rem); moving it would change where this
+   reflows. */
 @media (max-width: 60rem) {
   .grid {
     grid-template-columns: minmax(0, 1fr);

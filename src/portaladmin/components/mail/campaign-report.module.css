@@ -97,12 +97,16 @@
 .breakdown li:nth-child(4n+3) { --bar-color: var(--metric-amber); }
 .breakdown li:nth-child(4n+4) { --bar-color: var(--metric-teal); }
 .bar > span { display: block; height: 100%; border-radius: inherit; background: var(--bar-color); }
-@media (max-width: 800px) {
+/* 50rem, 2rem past --bp-lg (48rem); moving it would change where this
+   reflows. */
+@media (max-width: 50rem) {
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .chartGrid, .breakdownGrid { grid-template-columns: minmax(0, 1fr); }
   .emailOverview { gap: 22px; }
   .emailSettings { grid-template-columns: minmax(0, 1fr); gap: 18px; }
 }
+/* 33.75rem, 3.75rem past --bp-sm (30rem); moving it would change where this
+   reflows. */
 @media (max-width: 540px) {
   .emailOverview { grid-template-columns: minmax(0, 1fr); }
   .previewButton { width: 184px; }

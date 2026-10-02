@@ -698,6 +698,8 @@
   }
 }
 
+/* 42rem, 2rem past --bp-md (40rem); moving it would change where this
+   reflows. */
 @media (max-width: 42rem) {
   .field input,
   .noticeWrite textarea {

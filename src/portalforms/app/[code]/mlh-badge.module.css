@@ -18,6 +18,6 @@
   outline: none;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 30rem) {
   .badge { width: 44px; right: 12px; }
 }

@@ -5,6 +5,7 @@ import {
   type DraftView,
   type VersionRow,
 } from "@/lib/api";
+import { NeedsRoom } from "@/components/ui/needs-room";
 import { Shell } from "../../shell";
 import { Builder } from "./builder";
 
@@ -74,23 +75,25 @@ export default async function FormBuilder({
 
   return (
     <Shell personId={person.personId}>
-      <Builder
-        key={`${person.personId}:${form.id}`}
-        ownerId={person.personId}
-        form={form}
-        draftVersion={draft.version}
-        responseCount={responseCount}
-        mlhSeason={mlhSeason}
-        initialTheme={draft.theme}
-        initialFields={draft.fields}
-        statuses={statuses}
-        requiresSignIn={form.requiresSignIn}
-        eligibleStatuses={form.eligibleStatuses}
-        closesAt={form.closesAt ?? null}
-        published={published}
-        versions={versions}
-        canManage={mine.has("forms.manage")}
-      />
+      <NeedsRoom back="/forms" backLabel="Forms">
+        <Builder
+          key={`${person.personId}:${form.id}`}
+          ownerId={person.personId}
+          form={form}
+          draftVersion={draft.version}
+          responseCount={responseCount}
+          mlhSeason={mlhSeason}
+          initialTheme={draft.theme}
+          initialFields={draft.fields}
+          statuses={statuses}
+          requiresSignIn={form.requiresSignIn}
+          eligibleStatuses={form.eligibleStatuses}
+          closesAt={form.closesAt ?? null}
+          published={published}
+          versions={versions}
+          canManage={mine.has("forms.manage")}
+        />
+      </NeedsRoom>
     </Shell>
   );
 }

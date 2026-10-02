@@ -121,6 +121,8 @@
 .table td { height: 60px; }
 .columnOptions:popover-open { display: flex; flex-direction: column; }
 .columnsHead, .columnOptions > p, .columnsFoot { flex: none; }
+/* 43.75rem, 3.75rem past --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 700px) {
   :global(main):has(.page) { height: auto; min-height: 100dvh; overflow: visible; padding-bottom: 16px; }
   .toolbar { min-height: 60px; gap: 10px; }
@@ -137,7 +139,9 @@
   .panelHead, .panelBody { padding-inline: 20px; }
 }
 @media (prefers-reduced-motion: reduce) { .openArrow, .secondaryButton > svg { transition: none; } }
+/* 43.75rem, 3.75rem past --bp-md (40rem); same as above. */
 @media (max-width: 700px) { .sheetsButton { min-height: 34px; padding-inline: 10px; font-size: 11px; } }
+/* 43.75rem, 3.75rem past --bp-md (40rem); same as above. */
 @media (max-width: 700px) { .toolbar { padding: 10px 14px; } .workspace { padding-top: 16px; } }
 
 .columnCheck { display: grid; place-items: center; width: 18px; height: 18px; flex: none; border: 1px solid var(--line); border-radius: 5px; background: var(--raised); color: var(--raised); }

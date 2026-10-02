@@ -57,7 +57,9 @@ button.close:hover { background: var(--field); color: var(--ink); }
 .panel button:focus-visible { outline: none; }
 .group:disabled { opacity: .5; }
 .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (max-width: 560px) {
+/* 35rem sits exactly between --bp-sm (30rem) and --bp-md (40rem); moving it
+   either way would change where this panel reflows. */
+@media (max-width: 35rem) {
   .heading { padding: 16px 18px 12px; }
   .tabs { margin-inline: 18px; }
   .panelBody { padding: 18px; }

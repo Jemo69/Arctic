@@ -1748,6 +1748,8 @@ label {
   align-items: start;
 }
 
+/* 60rem, 4rem short of --bp-xl (64rem); moving it would change where this
+   layout collapses to one column. */
 @media (max-width: 60rem) {
   .builder {
     grid-template-columns: minmax(0, 1fr);

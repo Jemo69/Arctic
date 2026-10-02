@@ -71,11 +71,15 @@
 .pending td { pointer-events: none; }
 .empty { flex: 1; min-height: 0; overflow-y: auto; }
 .page a:focus-visible, .page button:focus-visible { outline: none; }
+/* 53.125rem, 5.125rem past --bp-lg (48rem); moving it would change where
+   this reflows. */
 @media (max-width: 850px) {
   .controls { align-items: flex-start; flex-direction: column; gap: 14px; }
   .searchActions { width: 100%; }
   .search { width: min(100%, 400px); }
 }
+/* 43.75rem, 3.75rem past --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 700px) {
   :global(main):has(.page) { height: auto; min-height: 100dvh; overflow: visible; padding-bottom: 20px; }
   .head { margin-bottom: 20px; }

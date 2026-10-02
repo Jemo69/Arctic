@@ -101,7 +101,9 @@
 .reason { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--field); color: var(--muted); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .page a:focus-visible, .page button:focus-visible { outline: none; }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (min-width: 1600px) {
+/* 100rem, 36rem past --bp-xl (64rem); a deliberate ultra-wide threshold, not
+   close enough to any canon value to be the same breakpoint. */
+@media (min-width: 100rem) {
   .split { grid-template-columns: minmax(0, 1fr) 360px; gap: 48px; }
   .rail { padding-left: 36px; }
 }
@@ -110,7 +112,9 @@
   .rail { padding-left: 22px; }
   .qa { grid-template-columns: minmax(0, 1fr); gap: 6px; padding-block: 18px; }
 }
-@media (max-width: 800px) {
+/* 50rem, 2rem past --bp-lg (48rem); moving it would change where this
+   reflows. */
+@media (max-width: 50rem) {
   .split { grid-template-columns: minmax(0, 1fr); }
   .sectionNav { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 20px; }
   .sectionNav a { flex: none; padding: 8px 14px; border-radius: 8px; background: var(--field); color: var(--muted); font-size: 12px; text-decoration: none; }
@@ -119,6 +123,8 @@
   .rail > .panel + .panel { padding-top: 0; border-top: 0; }
   .qa { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 20px; }
 }
+/* 33.75rem, 3.75rem past --bp-sm (30rem); moving it would change where this
+   reflows. */
 @media (max-width: 540px) {
   .toolbar { align-items: flex-start; gap: 10px; margin-bottom: 16px; }
   .breadcrumb { flex-wrap: wrap; gap: 8px; font-size: 12px; }

@@ -170,6 +170,8 @@
   .panel { padding: 21px; }
   .addForm { grid-template-columns: minmax(0, 1fr); }
 }
+/* 53.125rem, 5.125rem past --bp-lg (48rem); moving it would change where
+   this reflows. */
 @media (max-width: 850px) {
   .permissionsLayout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .areaRail { border: 0; padding: 0; }
@@ -182,6 +184,8 @@
   .accountGrid .accountDetails > div:first-child { grid-column: 1 / -1; }
   .addForm { grid-template-columns: minmax(0, 1fr) minmax(135px, .65fr); }
 }
+/* 37.5rem, 2.5rem short of --bp-md (40rem); moving it would change where
+   this reflows. */
 @media (max-width: 600px) {
   .breadcrumb { margin-bottom: 22px; font-size: 12px; gap: 12px; }
   .profileHeader { gap: 24px; margin-bottom: 23px; }

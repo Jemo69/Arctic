@@ -714,6 +714,8 @@ button.templateCard {
   white-space: nowrap;
 }
 
+/* 36rem, 4rem short of --bp-md (40rem); moving it would change where this
+   reflows. */
 @media (max-width: 36rem) {
   .templateGallery :global(.form-head) {
     flex-wrap: wrap;
@@ -753,6 +755,8 @@ button.templateCard {
   }
 }
 
+/* 28rem, 2rem short of --bp-sm (30rem); moving it would change where this
+   reflows. */
 @media (max-width: 28rem) {
   .selectionBar {
     gap: 5px;
@@ -771,6 +775,8 @@ button.templateCard {
   }
 }
 
+/* 70rem, 6rem past --bp-xl (64rem); moving it would change where this
+   reflows. */
 @media (max-width: 70rem) {
   .templateGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -778,6 +784,8 @@ button.templateCard {
 
 }
 
+/* 42rem, 2rem past --bp-md (40rem); moving it would change where this
+   reflows. */
 @media (max-width: 42rem) {
   .templateGrid {
     grid-template-columns: minmax(0, 1fr);
@@ -1072,6 +1080,8 @@ button.templateCard {
   }
 }
 
+/* 70rem, 6rem past --bp-xl (64rem); moving it would change where this
+   reflows. */
 @media (max-width: 70rem) {
   .designHeader {
     grid-template-columns: auto minmax(0, 1fr);
@@ -1089,6 +1099,8 @@ button.templateCard {
   }
 }
 
+/* 38rem, 2rem short of --bp-md (40rem); moving it would change where this
+   reflows. */
 @media (max-width: 38rem) {
   .designHeader .headerAction { display: contents; }
   .designHeader .headerSave { grid-row: 1; grid-column: 2; justify-self: end; }
@@ -1096,6 +1108,8 @@ button.templateCard {
   .designHeader .headerSteps { grid-row: 3; }
 }
 
+/* 26rem, 4rem short of --bp-sm (30rem); moving it would change where this
+   reflows. */
 @media (max-width: 26rem) {
   .editorHeader {
     column-gap: 12px;
