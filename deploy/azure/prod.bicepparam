@@ -6,7 +6,23 @@
 using 'main.bicep'
 
 param environmentName = 'prod'
-param location = 'centralus'
+// East US 2, not Central US like staging.
+//
+// Both portals serve the API from their own origin by rewriting to harbor --
+// deliberately, because a SameSite=Lax session cookie is not sent on a
+// cross-site fetch. So every API call is relayed by Vercel, and Vercel serves
+// this project from iad1, in northern Virginia. Central US is Iowa, which made
+// the relay a cross-country round trip on every single request.
+//
+// East US 2 is the same metropolitan area as iad1, so that hop stops being a
+// hop worth measuring. It is also where the people using this are: Maryland,
+// and the schools around it.
+//
+// Postgres is cheaper here too -- B1ms is $0.017/hour against $0.01921 in
+// Central US -- and Container Apps is priced identically. Staging stays in
+// Central US for now; it is moving subscriptions separately and should be
+// created here when it does.
+param location = 'eastus2'
 // Which registry the images come from.
 //
 // Default is the shared one, which is what both environments used while they
