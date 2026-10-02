@@ -30,7 +30,7 @@ deploy/local/dev.sh you@morgan.edu
 
 That is the whole setup. The script checks its tools, brings up the containers,
 waits for Postgres, applies migrations, seeds the address you gave it as a super
-admin, starts the four services, and opens the organizer console with you
+admin, starts the five services, and opens the organizer console with you
 already signed in. Ctrl+C stops everything it started.
 
 | | Where | |
@@ -40,6 +40,7 @@ already signed in. Ctrl+C stops everything it started.
 | Mailpit | `localhost:8025` | see [watching a sign-in](#watching-a-hacker-sign-in) before you wait on this |
 | atlas | `localhost:5080` | the API |
 | harbor | `localhost:5050` | the gateway — **not optional**, see below |
+| portalweb | `localhost:3000` | the marketing site and the hacker portal |
 | portaladmin | `localhost:3001` | the organizer console |
 | portalforms | `localhost:3002` | the public form, at `/<code>` |
 
@@ -237,8 +238,10 @@ An empty 404 body means harbor matched no route and never called anything.
 
 ### The public site
 
-`dev.sh` does not start `portalweb`. It is the marketing site and the hacker
-portal, and neither is needed to work on forms or on the console:
+`dev.sh` starts `portalweb` along with everything else. It is the marketing
+site and the hacker portal, and neither is needed to work on forms or on the
+console — if that is all you are doing, the four terminals above are enough
+and you can leave this one closed. Started on its own:
 
 ```bash
 cd src/portalweb
@@ -248,6 +251,19 @@ npm run dev          # http://localhost:3000
 
 It reaches the API the same way the others do — its own origin, rewritten to
 harbor.
+
+To see what an applicant sees rather than what `dev.sh` already signed you in
+as, the same development door works through this origin too, because it
+proxies `/api/*` the same way portaladmin does:
+
+```
+http://localhost:3000/api/dev/sign-in?email=THEIR@ADDRESS&next=/portal
+```
+
+The address has to belong to an application that already exists — the door
+authenticates whoever you tell it to, it does not create them. See
+[watching a hacker sign in](#watching-a-hacker-sign-in) for getting one into
+the database in the first place.
 
 Emailed sign-in links are built from `PublicBaseUrl` on atlas, which defaults to
 `http://localhost:3000` and therefore needs nothing set locally. In a deployed
@@ -278,8 +294,16 @@ Google project to develop the rest.
 ```bash
 export Google__ClientId=...apps.googleusercontent.com
 export Google__ClientSecret=...
-export Google__RedirectUri=http://localhost:5080/auth/google/callback
+export Google__RedirectUri=http://localhost:3001/api/auth/google/callback
 ```
+
+Through portaladmin's own origin, with the `/api` prefix — not straight at
+atlas. The sign-in button on the console links to `/api/auth/google` on
+`:3001`, and the PKCE state cookie that round trip sets is scoped to that same
+host and path; sending Google's callback anywhere else means the cookie never
+comes back and the callback has nothing to check the state against. The
+client's authorized redirect URI in Google Cloud Console has to match this
+exactly.
 
 Google authenticates; it does not authorise. An address must also exist as an
 `organizer` row, which is the allowlist. The Google subject id is bound on the
@@ -500,11 +524,13 @@ ls -lO src/harbor/MorganHacks.Harbor/appsettings.json   # "hidden" in the flags 
 find src -name 'appsettings*.json' -exec chflags nohidden {} +
 ```
 
-Worth knowing because it is not the cause the comments in those files name. They
-warn that a single non-ASCII character stops the whole configuration binding,
-and `src/harbor/MorganHacks.Harbor/appsettings.json` has two em-dashes in it
-today while staging proxies correctly — so that is not the rule it is written
-as. The hidden flag produces exactly the symptom described.
+Worth knowing because it produces the identical symptom to a different bug.
+`appsettings.json`'s own comments warn that a single non-ASCII character
+anywhere in the file also stops the whole configuration binding, silently,
+with the same result: zero routes, a body-less 404 to everything. That file is
+plain ASCII today for exactly that reason, so if you hit the zero-routes
+symptom, the hidden flag is the one to check first — a stray non-ASCII
+character is not sitting there waiting to be found.
 
 **`docker-entrypoint-initdb.d` only runs on an empty database.** If you change
 `deploy/local/postgres/01-schemas.sql`, the change does nothing until you wipe
@@ -596,7 +622,7 @@ nothing at all — see [watching a hacker sign in](#watching-a-hacker-sign-in).
 For staging and production, `lark` reads standard AWS environment variables:
 
 ```
-AWS_REGION=us-east-1
+AWS_REGION=us-east-2
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 ```
@@ -606,7 +632,7 @@ nothing from the queue — so the backlog goes out untouched the moment
 credentials arrive, rather than burning retry attempts on a problem no retry
 fixes.
 
-The region is **us-east-1**, and that is not arbitrary: production access is
+The region is **us-east-2**, and that is not arbitrary: production access is
 granted per region, so it has to be the region the support case was raised in.
 An identity verified in one region does nothing for another.
 
@@ -615,7 +641,7 @@ Two things gate real delivery, and they are separate:
 - **Domain verification.** `auth.morganhacks.com`, verified in SES with DKIM,
   plus a custom MAIL FROM at `bounce.auth.morganhacks.com` so bounce reports
   come from our own subdomain rather than Amazon's. Done: DKIM and MAIL FROM
-  both report SUCCESS in us-east-1.
+  both report SUCCESS in us-east-2.
 
   The MAIL FROM `MX` record names a region. Point it at the wrong one and SES
   reports the domain unverified with no useful explanation.

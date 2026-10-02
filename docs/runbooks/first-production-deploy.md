@@ -1,100 +1,53 @@
 # The first production deploy
 
-**Not yet possible.** Checked against the live account on **2026-09-30**: the
-pipeline is fine and staging proves it, but production is missing configuration
-that only exists on staging. This page is the list, in the order the deploy
-hits it.
+**This used to be a forward-looking checklist** — settings to fill in before
+production could exist at all, written on 2026-09-30. Production exists now:
+it deployed on **2026-10-02**, on the fourth attempt, and none of the three
+failures before it were the application. They were the deploy identity's
+permissions, Azure capacity, and one Bicep parameter answering two different
+questions with the same value.
 
-Nothing here is a code change. It is five settings, one Azure role grant, and
-two Vercel projects.
+Retelling that as a story would not help whoever reads this next, because two
+of the three failures are already fixed in `main.bicep` and cannot happen to a
+new environment the way they happened to this one. So this page is rewritten
+as **the checklist for standing up the next environment**, with each failure
+folded in at the point it would still bite — which, for two of them, is not at
+all, and the page says so.
 
-Budget half a day, most of it waiting on deploys. **Expect the first run to
-fail** — step 3 is a known two-run sequence, not a mistake.
-
----
-
-## What already works
-
-Worth saying first, because the list below is long and none of it is broken
-machinery.
-
-- **OIDC is wired for production.** `id-mh-deploy` carries
-  `github-production → repo:MorganHacks/Arctic:environment:Production`, plus the
-  ID-pinned variant. Authentication will not be the problem.
-- **Repository-level variables cover both environments**: `SUPER_ADMIN_EMAIL`,
-  `GOOGLE_CLIENT_ID`, `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
-  `AZURE_SUBSCRIPTION_ID`.
-- **Production environment variables already set**: `CONSOLE_BASE_URL`,
-  `FORMS_BASE_URL`, `GOOGLE_REDIRECT_URI`, `AWS_REGION`.
-- **The Production GitHub environment requires a review** and restricts the
-  branch, so nothing reaches it by accident.
-- **The two-pass deploy refuses to put new code in front of an old schema.**
-  `deploy.sh` runs platform → migrations → apps and exits 1 if migrations fail.
+If you want the failures in the order production actually hit them rather than
+the order a new deploy would, they are numbered below in that order too.
 
 ---
 
-## 1. A production database password
+## Before you start
 
-**Fails in about five seconds without this.** `deploy/azure/deploy.sh:24`:
+- **Pick a region, and check it before you commit to it** — see problem 2.
+  `location` in a `.bicepparam` file is cheap to write and expensive to
+  discover is wrong three deploys later.
+- **Decide whether this environment shares the registry.** The default is
+  yes: `registryName` defaults to the shared `crmharctic` in `rg-mh-shared`,
+  `centralus`, regardless of where this environment's own resources live —
+  see `sharedLocation` in `main.bicep`. It needs its own registry only if it
+  cannot share that one at all, because a managed identity cannot be granted
+  `AcrPull` across a tenant or subscription boundary.
+- **Generate a `DB_PASSWORD` this environment does not share with any
+  other.** `prod.bicepparam` reads it with no default on purpose, for exactly
+  this reason: an environment must not inherit another one's database
+  credential just because a secret with that name already exists somewhere.
+- **Give the new GitHub environment a federated credential on
+  `id-mh-deploy`**, and, if it should require a reviewer the way Production
+  does, set that on the GitHub environment itself — not in any file here.
 
-```bash
-: "${DB_PASSWORD:?set DB_PASSWORD}"
-```
+## 1. The deploy identity could not grant roles in a resource group that did not exist yet
 
-The Production environment holds only `PROXY_SHARED_SECRET`. Past that guard it
-would fail again at compile: `prod.bicepparam` reads `DB_PASSWORD` with **no
-default**, and a missing one is a template error rather than an empty string.
+`platform.bicep` assigns Storage Blob Data Contributor on the resumes storage
+account, and the identity running the deploy — `id-mh-deploy` — needs **User
+Access Administrator** to create that assignment. It held that role on
+`rg-mh-staging` and `rg-mh-shared`, granted by hand when each was created, and
+nothing on `rg-mh-prod`, because the group did not exist until this deploy
+created it.
 
-That absence is deliberate — production must not inherit staging's password —
-so this is a decision to make, not an oversight to correct.
-
-```bash
-# Generate it somewhere it will not end up in shell history or a log.
-gh secret set DB_PASSWORD --env Production -R MorganHacks/Arctic
-```
-
-**Keep it somewhere real.** Bicep never reads it back, so losing it means
-resetting the server admin password rather than looking it up.
-
-## 2. The four settings that fail quietly
-
-None of these stop a deploy. Every one defaults to an empty string, so the
-deploy goes green and the thing they control is simply off.
-
-| Setting | Kind | Without it |
-|---|---|---|
-| `PUBLIC_BASE_URL` | variable | **Emailed sign-in links are built from this.** Empty means every magic link in production points nowhere. |
-| `GOOGLE_CLIENT_SECRET` | secret | Google sign-in is off. |
-| `AWS_ACCESS_KEY_ID` | secret | `UnconfiguredEmailProvider` is registered instead of SES, so mail queues at `pending` and never sends. |
-| `AWS_SECRET_ACCESS_KEY` | secret | As above. Both are needed or neither counts. |
-
-```bash
-gh variable set PUBLIC_BASE_URL --env Production -R MorganHacks/Arctic \
-  --body "https://www.morganhacks.com"
-
-gh secret set GOOGLE_CLIENT_SECRET   --env Production -R MorganHacks/Arctic
-gh secret set AWS_ACCESS_KEY_ID      --env Production -R MorganHacks/Arctic
-gh secret set AWS_SECRET_ACCESS_KEY  --env Production -R MorganHacks/Arctic
-```
-
-`ENABLE_HACKER_PORTAL_FEATURE` is also unset on production. Leaving it unset
-lets `features.json` decide, which keeps the portal off — set it to `true` only
-when the portal is meant to be live.
-
-## 3. The role grant, which needs two runs
-
-**This is the one that fails the first time, and it is supposed to.**
-
-`platform.bicep` assigns Storage Blob Data Contributor on the resumes account,
-and **Contributor cannot create role assignments**. The deploy identity holds
-User Access Administrator on `rg-mh-shared` and `rg-mh-staging` — and nothing on
-`rg-mh-prod`, which does not exist yet. The grant cannot be made before the
-group exists, and the group is created by the deploy.
-
-So: run it, watch it fail, grant, run it again.
-
-This is the same failure staging hit on 2026-09-02, recorded in
-[the backlog](../backlog.md):
+Stage 3 (Platform) failed with:
 
 ```
 Authorization failed for template resource ... of type
@@ -102,101 +55,126 @@ Authorization failed for template resource ... of type
 permission to perform action 'Microsoft.Authorization/roleAssignments/write'
 ```
 
-**First run** — Actions → *Deploy to Azure* → environment `production`. It
-creates `rg-mh-prod` and fails on the assignment.
+**`what-if` did not warn about this.** It does not evaluate role-assignment
+authorization, so the plan step was clean and the apply failed anyway — the
+same shape of surprise staging hit on 2026-09-02, recorded in
+[the backlog](../backlog.md).
 
-**Then grant:**
-
-```bash
-SP=$(az identity show -n id-mh-deploy -g rg-mh-shared --query principalId -o tsv)
-SUB=$(az account show --query id -o tsv)
-
-az role assignment create \
-  --assignee-object-id "$SP" --assignee-principal-type ServicePrincipal \
-  --role "User Access Administrator" \
-  --scope "/subscriptions/$SUB/resourceGroups/rg-mh-prod"
-```
-
-Narrowed to the one group on purpose. The ability to hand out access is the
-permission worth being stingy with.
-
-**Second run** — same dispatch. The templates are idempotent and the grant is
-in place by then.
-
-If the apps fail to pull images on this run, re-run once more: the AcrPull
-assignment occasionally has not propagated by the time containers start.
-
-## 4. The frontends, which are a separate problem
-
-The backend being up does not make the site work. These are Vercel settings,
-unrelated to everything above.
-
-**`API_ORIGIN` is unset on production** for portaladmin and portalweb. Both fall
-back to `http://localhost:5050`, and Vercel refuses to proxy to a private
-address — so every call answers 404 `DNS_HOSTNAME_RESOLVED_PRIVATE`. Confirmed
-live: `admin.morganhacks.com/api/health` 404s today while
-`admin-stg.morganhacks.com/api/health` returns `{"status":"ok"}`.
+**Fixed for every environment after this one.** The grant is now at
+**subscription scope** rather than per-resource-group, specifically so a new
+environment's first deploy does not start by rediscovering this. Confirm it is
+still there before trusting that:
 
 ```bash
-vercel env add API_ORIGIN production   # for morganhacks-portaladmin
-vercel env add API_ORIGIN production   # and again for morganhacks-portalweb
+az role assignment list --assignee id-mh-deploy \
+  --query "[].{role:roleDefinitionName, scope:scope}" -o table
 ```
 
-**portalforms has never built.** Its Ignored Build Step on the Vercel dashboard
-cancels every deployment, production included, in about two seconds. Both
-`forms` domains answer `DEPLOYMENT_NOT_FOUND`. The repository already carries
-the correct `ignoreCommand` in `src/portalforms/vercel.json`; the dashboard
-setting is what overrides it. See [the backlog](../backlog.md) for the full
-explanation of the inverted exit code.
+If `User Access Administrator` is not scoped to the subscription itself, grant
+it there — not to the new environment's resource group. The per-group version
+is exactly what problem 4 is about.
 
-## 5. Before announcing anything
+## 2. Central US would not create a new environment at all
+
+With `location` still at its `centralus` default, the next run passed stage 3
+and failed trying to create `cae-mh-prod`:
+
+```
+AKSCapacityHeavyUsage
+```
+
+Container Apps runs on AKS underneath, and Central US had no capacity left on
+this subscription for a new environment. **This is not a configuration
+mistake**, and `what-if` cannot see it either — capacity is only evaluated at
+apply time, not at plan time. There is no setting that fixes it. The only move
+is a different region, which is the same lesson staging's Postgres had already
+taught in a smaller way: `eastus` refuses Postgres provisioning outright on
+this subscription (see `deploy/azure/README.md`). Have a fallback region in
+mind before you run anything, rather than discovering you need one mid-deploy.
+
+## 3. One `location` parameter cannot answer two questions
+
+Production moved to `eastus2` — the same metro as `iad1`, where Vercel serves
+this project from and relays every API call through; `prod.bicepparam` has the
+full reasoning. The very next run failed at **stage 1**, before anything
+environment-specific had even been looked at:
+
+```
+InvalidResourceLocation
+```
+
+At the time, `location` was a single parameter handed to every module,
+including the shared registry. The registry already existed in `centralus`
+and a resource cannot change region, so pointing `location` at `eastus2` tried
+to move it and failed immediately — at the cheapest possible stage to fail at,
+which is the one consolation here.
+
+**Already fixed.** `main.bicep` now takes a separate `sharedLocation`
+parameter (default `centralus`) for the registry and anything else shared
+across environments, independent of each environment's own `location`. A new
+environment in a new region does not need to touch this at all — only adding a
+new *shared* resource would.
+
+## 4. The role grant from problem 1 did not survive the resource group it was on
+
+The grant from problem 1 was first made directly on `rg-mh-prod`, scoped the
+same way the old instructions for this page said to, before the subscription-
+scope fix existed. Then problem 2 happened: Central US refused the
+environment, so `rg-mh-prod` was deleted and recreated in `eastus2` — a
+resource group's location is as immovable as the registry's — and the grant
+made on the old group went with it. The new group started with nothing, and
+the deploy failed on the exact same `roleAssignments/write` error as problem
+1, for what looked like no reason the second time.
+
+This is the actual reason problem 1's fix is at subscription scope rather than
+per-group: a grant scoped to a resource group is only as durable as that
+resource group is. If this environment's own resource group is ever deleted
+and recreated — a region move, or anything else — re-check the subscription
+grant is still there rather than assuming the next deploy will just work
+because the last one did.
+
+## 5. Run it
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://admin.morganhacks.com/api/health
+export DB_PASSWORD=...            # generated fresh, never copied from another environment
+export SUPER_ADMIN_EMAIL=olola73@morgan.edu
+
+./deploy/azure/deploy.sh <env>                 # what-if first — changes nothing
+./deploy/azure/deploy.sh <env> --apply
 ```
 
-**200 is the gate.** Anything else means the frontends still cannot reach the
-backend, whatever the Azure portal says.
+Or through CI: Actions → **Deploy to Azure** → `workflow_dispatch`, with
+`environment` pointed at whichever GitHub environment this one is wired to. A
+push to `main` only ever reaches staging — a new environment needs its own
+entry in that choice before anything will deploy to it at all.
 
-Then, in order:
+**Budget for more than one run even with every lesson above already fixed.**
+The role-assignment propagation delay documented in `deploy/azure/README.md`
+("Pulling images") is still real and unrelated to any of the above: if the
+apps fail to pull their first image, re-run — the grant is in place by then.
 
-- [ ] Sign in to the console with Google. Proves `GOOGLE_CLIENT_SECRET` and the
-      redirect URI.
-- [ ] Request a magic link and follow it. Proves `PUBLIC_BASE_URL` and that SES
-      is actually sending rather than queueing.
-- [ ] Open a form's public URL and submit it. Proves portalforms deploys and
-      reaches the API.
-- [ ] Confirm the super admin was seeded, and that there are **two** of them.
-      The migration runner warns when there is only one, because one graduation
-      should not lock the organisation out.
+## 6. Before calling it done
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://<harbor-fqdn>/api/health
+```
+
+**200 is the gate.** Then:
+
+- [ ] Confirm the super admin was seeded, and that there are **two** of them —
+      the migration runner warns when there is only one, because one
+      graduation should not lock the organisation out.
+- [ ] Check the budget. `arctic-monthly` is set at **$140/month**, with alerts
+      at 80%, 100% and forecast 100% — a new environment is a new line on it,
+      not a reason for a new budget.
+- [ ] Remember the Azure side being up does not mean a browser can reach it.
+      That is a Vercel-side question — `API_ORIGIN`, domains, Ignored Build
+      Steps — covered in `docs/architecture/deployments.md`, not here.
 
 ---
 
-## Two things that are not configuration
-
-**Check what this subscription is licensed for.** A Visual Studio
-subscription's monthly credit is for development and testing only under its
-terms — fine for staging, not a licence to run registration on. Being cut off
-during registration week is the worst version of that mistake.
-`deploy/azure/README.md` lists the alternatives worth trying first.
-
-**Two gaps follow production wherever it goes**, both in
-[the backlog](../backlog.md) and neither fixed by this page:
-
-- Postgres accepts connections from any Azure tenant (`0.0.0.0-0.0.0.0`
-  firewall rule), with only the password in the way. The fix is VNet
-  integration, which means building a new Container Apps environment — so it is
-  much cheaper to do *before* production exists than after.
-- Every per-IP rate limit is bypassable with a forged `X-Forwarded-For`, because
-  `Network__KnownProxies` and `Network__KnownNetworks` are set in neither
-  environment.
-
-The first one is the reason to think about this now rather than later: once
-production holds real applicant data, rebuilding its environment stops being
-free.
-
----
-
-**Escalate to:** the tech lead. For anything touching the production database
-password or a role assignment, get a second person on the call first — a failed
-deploy is recoverable, and a credential nobody can find is not.
+**Escalate to:** the tech lead. For anything touching a database password or a
+role assignment, get a second person on the call first. A failed deploy is
+recoverable by re-running it. A role assignment that quietly disappeared with
+a deleted resource group, or a password nobody wrote down, is the kind of
+problem that is only obvious after you already knew to go looking for it.

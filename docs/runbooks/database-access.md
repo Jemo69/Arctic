@@ -19,14 +19,21 @@ already permits it. Nothing to open, nothing to close afterwards, and no
 credential ever reaches a laptop.
 
 ```bash
-# staging
+# staging — centralus
 psql "host=psql-mh-staging.postgres.database.azure.com port=5432 \
+      dbname=morganhacks user=arctic sslmode=require"
+
+# production — eastus2
+psql "host=psql-mh-prod.postgres.database.azure.com port=5432 \
       dbname=morganhacks user=arctic sslmode=require"
 ```
 
-It asks for the password. That lives in the `DB_PASSWORD` secret on the GitHub
-environment, and — for staging — in `~/.mh-staging-db-password` on the tech
-lead's machine.
+It asks for the password. That lives in the `DB_PASSWORD` secret on the
+matching GitHub environment (`Staging` or `Production`) and, for staging only,
+in `~/.mh-staging-db-password` on the tech lead's machine. Production's
+password was generated at deploy time and kept nowhere else — see
+[the first production deploy](first-production-deploy.md) for why there is no
+second copy to fall back on.
 
 ## Read first, write never (by hand)
 
@@ -70,7 +77,8 @@ SELECT status, created_at FROM notify.messages WHERE correlation_id = '...';
 ## If you genuinely need it from a laptop
 
 Only when Cloud Shell will not do. Add your address, do the thing, **remove the
-rule**:
+rule** — substituting `rg-mh-staging`/`psql-mh-staging` for
+`rg-mh-prod`/`psql-mh-prod` on production:
 
 ```bash
 MYIP=$(curl -s https://api.ipify.org)
@@ -92,7 +100,11 @@ az postgres flexible-server firewall-rule list -g rg-mh-staging \
   -n psql-mh-staging -o table
 ```
 
-`allow-azure-services` is the only rule that belongs there.
+`allow-azure-services` is the rule named `0.0.0.0-0.0.0.0` — Azure's "any
+Azure service in any tenant" rule, wider than it looks and tracked as a known
+gap in [the backlog](../backlog.md) rather than something this page can fix.
+Any `temp-<name>` rule still sitting there after its job is worth removing on
+sight; `allow-azure-services` itself is not a stray, however it reads.
 
 ## Backups
 
@@ -107,9 +119,14 @@ az postgres flexible-server restore -g rg-mh-staging \
   --restore-time "2026-09-01T12:00:00Z"
 ```
 
+For production, restore into `rg-mh-prod` from `psql-mh-prod` instead — a
+restore always lands in the source server's own resource group.
+
 **An untested backup is a belief, not a backup.** Run this once against staging
 before the event, confirm the data is there, and delete the restored server.
-That is an M9 rehearsal item and it is the one people skip.
+That is an M9 rehearsal item and it is the one people skip. It has not been
+rehearsed against production at all — do that at least once before relying on
+it there.
 
 ---
 

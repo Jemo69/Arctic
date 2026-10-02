@@ -4,7 +4,7 @@
 // then one thing that either exists or does not, rather than a group somebody
 // has to remember to create first.
 //
-//   az deployment sub create -l eastus -f main.bicep -p staging.bicepparam
+//   az deployment sub create -l centralus -f main.bicep -p staging.bicepparam
 //
 // Deployed in two passes, and that is deliberate. `deployApps` is false on the
 // first pass so the migration job can run against the new schema before any

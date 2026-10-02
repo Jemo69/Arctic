@@ -22,13 +22,21 @@ That is the whole procedure. Images are tagged by commit and never `:latest`,
 so this re-deploys bytes that already exist rather than rebuilding and hoping
 they come out the same.
 
-Finding the last good tag:
+Finding the last good tag — `crmharctic` is the one registry both environments
+pull from, in `rg-mh-shared`, so the command is the same either way:
 
 ```bash
 az acr repository show-tags -n crmharctic --repository harbor --orderby time_desc -o table
 ```
 
-They are commit SHAs, so `git log --oneline` tells you what each one is.
+They are commit SHAs, so `git log --oneline` tells you what each one is. The
+tag that is good for staging is not necessarily good for production — check
+what is actually running there before assuming the two track each other:
+
+```bash
+az containerapp show -g rg-mh-prod -n ca-harbor-prod \
+  --query "properties.template.containers[0].image" -o tsv
+```
 
 ## The thing to check first
 
@@ -59,7 +67,8 @@ time. Adding is always reversible; removing is not.
 
 Then nothing was deployed and there is nothing to roll back. `deploy.sh` stops
 before touching any service if migrations fail, precisely so a half-applied
-state cannot happen. Read why:
+state cannot happen. Read why — swap `staging` for `prod` in both the resource
+group and the job name on production:
 
 ```bash
 az containerapp job logs show -g rg-mh-staging -n caj-migrations-staging \
@@ -74,8 +83,16 @@ az containerapp job logs show -g rg-mh-staging -n caj-migrations-staging \
 az containerapp show -g rg-mh-staging -n ca-harbor-staging \
   --query "properties.template.containers[0].image" -o tsv
 
-curl -s https://<harbor-host>/api/health
+curl -s "https://$(az containerapp show -g rg-mh-staging -n ca-harbor-staging \
+  --query properties.configuration.ingress.fqdn -o tsv)/api/health"
 ```
+
+On production, that is `rg-mh-prod`/`ca-harbor-prod` — a separate Container
+Apps environment in **eastus2**, not centralus, with its own default domain
+(`braveriver-185f0512.eastus2.azurecontainerapps.io` rather than staging's
+`kindmeadow-f4a89b60.centralus.azurecontainerapps.io`). Harbor's own hostname
+is that domain with its app name in front, which is what the `--query` above
+looks up rather than assumes.
 
 The image tag should be the one you asked for and health should answer `ok`.
 

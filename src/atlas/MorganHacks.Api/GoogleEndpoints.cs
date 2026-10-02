@@ -225,8 +225,24 @@ public static class GoogleEndpoints
         Path = path,
     };
 
+    /// <summary>
+    /// Where Google sends the browser back to.
+    /// </summary>
+    /// <remarks>
+    /// The local default is port 3001, which is portaladmin. Organizer
+    /// sign-in is the only thing that starts this flow and the console is the
+    /// only app that links to it, so a default pointing anywhere else is a
+    /// default that cannot work.
+    /// <para>
+    /// It used to say 3000, which is portalweb. The flow would begin, Google
+    /// would return to an app that does not serve the callback, and the PKCE
+    /// state cookie -- scoped to the console's host and path -- would not be
+    /// sent even if it did. Anybody who set ClientId and ClientSecret and did
+    /// not know to also set this lost the time it takes to work that out.
+    /// </para>
+    /// </remarks>
     private static string RedirectUri(IConfiguration config) =>
-        config["Google:RedirectUri"] ?? "http://localhost:3000/api/auth/google/callback";
+        config["Google:RedirectUri"] ?? "http://localhost:3001/api/auth/google/callback";
 
     /// <summary>
     /// Where the browser is sent once the callback is finished.
