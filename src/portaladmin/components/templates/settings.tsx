@@ -8,12 +8,14 @@ import { FROM_DOMAIN, FROM_LOCAL, type DraftHandle } from "./use-draft";
 import type { FormChoice, Placeholder, TemplateFormat } from "./types";
 import type { TemplateFieldErrors } from "./validation";
 import styles from "./settings.module.css";
+import type { AnswerSummary } from "@/app/templates/api";
 
 export function TemplateSettings({
   handle,
   available,
   errors,
   forms,
+  answers,
 }: {
   handle: DraftHandle;
   available: Placeholder[] | null;
@@ -29,6 +31,16 @@ export function TemplateSettings({
    * deleted.
    */
   forms: FormChoice[] | null;
+
+  /**
+   * Why the chosen form's questions did not all become placeholders, or null
+   * where no form is chosen.
+   *
+   * Without this, picking a standard application form adds three names and
+   * nothing else, and there is no way to tell that from the picker being
+   * broken -- which is exactly how it was reported.
+   */
+  answers: AnswerSummary | null;
 }) {
   const { draft, set } = handle;
   const [editingReplyTo, setEditingReplyTo] = useState(false);
@@ -139,6 +151,8 @@ export function TemplateSettings({
               ))}
             </select>
 
+            <AnswerNote answers={answers} />
+
             <p id="template-form-tip" className={styles.tip}>
               <Icon icon={BulbIcon} size={17} />
               <span>
@@ -228,6 +242,41 @@ export function TemplateSettings({
         />
       </label>
     </div>
+  );
+}
+
+/**
+ * What the chosen form contributed, and what it did not.
+ *
+ * A question becomes {{form.answer.<key>}} only when its answer is not already
+ * a column on the application. Every question on a standard application form
+ * is a column, so a form with twelve questions can offer none of them -- which
+ * is correct, and reads exactly like the picker having failed. Saying the
+ * arithmetic out loud is the difference.
+ *
+ * Silent when a form offered questions, because then the menu already shows
+ * the answer and a count underneath it would be noise.
+ */
+function AnswerNote({ answers }: { answers: AnswerSummary | null }) {
+  if (answers === null || answers.offered > 0) return null;
+
+  const because: string[] = [];
+  if (answers.alreadyFields > 0) {
+    because.push(`${answers.alreadyFields} ${answers.alreadyFields === 1 ? "is" : "are"} already offered above as applicant fields`);
+  }
+  if (answers.withheld > 0) {
+    because.push(`${answers.withheld} ${answers.withheld === 1 ? "is" : "are"} withheld from email on purpose`);
+  }
+  if (answers.files > 0) {
+    because.push(`${answers.files} ${answers.files === 1 ? "is a file upload" : "are file uploads"}`);
+  }
+
+  return (
+    <p className={styles.tip}>
+      {because.length === 0
+        ? "This form has no questions whose answers can be merged into an email."
+        : `None of this form's questions can be merged: ${because.join(", ")}. Questions you add yourself appear here as {{form.answer.…}}.`}
+    </p>
   );
 }
 

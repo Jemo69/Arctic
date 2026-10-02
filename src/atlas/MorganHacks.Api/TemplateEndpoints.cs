@@ -315,8 +315,8 @@ public static partial class TemplateEndpoints
     {
         var paper = form is { } formId ? await forms.ByIdAsync(formId, ct) : null;
 
-        var questions = MergeFields.QuestionsOn(
-            paper, paper is null ? null : await forms.PublishedAsync(paper.Id, ct));
+        var published = paper is null ? null : await forms.PublishedAsync(paper.Id, ct);
+        var questions = MergeFields.QuestionsOn(paper, published);
 
         return Results.Ok(new
         {
@@ -325,6 +325,13 @@ public static partial class TemplateEndpoints
                     aboutAForm: paper is not null,
                     answers: FormAnswers.Asked(questions))
                 .Select(field => new { name = field.Name, description = field.Description, group = field.Group }),
+
+            // Null when no form was named, because "no form chosen" and "a form
+            // whose questions all turned out to be columns" are different
+            // things and the editor says different sentences about them.
+            answers = paper is null
+                ? null
+                : MergeFields.SummarizeAnswers(paper, published, questions),
         });
     }
 

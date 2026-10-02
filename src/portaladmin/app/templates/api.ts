@@ -48,8 +48,23 @@ export type PreviewRead =
  * a menu and stops calling anything unknown, because the only thing worse than
  * not knowing which placeholders resolve is being told the wrong ones.
  */
+/**
+ * Why a chosen form's questions did not all become placeholders.
+ *
+ * `alreadyFields` and `withheld` are separate counts because they are separate
+ * sentences: one says the answer is offered under another name, the other says
+ * it is deliberately never offered. Told only the first, an author goes looking
+ * for a name that is not coming.
+ */
+export type AnswerSummary = {
+  offered: number;
+  alreadyFields: number;
+  withheld: number;
+  files: number;
+};
+
 export type PlaceholderRead =
-  | { ok: true; items: Placeholder[] }
+  | { ok: true; items: Placeholder[]; answers: AnswerSummary | null }
   | { ok: false; error: string };
 
 /**
@@ -319,6 +334,27 @@ export async function renderPreview(input: {
 }
 
 /**
+ * Why a chosen form contributed the number of questions it did.
+ *
+ * Taken apart rather than cast to, like every other reader here. Absent is
+ * null and means no form was named, which the screen says differently from a
+ * form that had questions and offered none of them.
+ */
+function summary(body: unknown): AnswerSummary | null {
+  if (body === null || typeof body !== "object") return null;
+  const read = (key: string) => {
+    const value = (body as { [k: string]: unknown })[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  };
+  return {
+    offered: read("offered"),
+    alreadyFields: read("alreadyFields"),
+    withheld: read("withheld"),
+    files: read("files"),
+  };
+}
+
+/**
  * Which placeholders resolve, from the only thing that knows.
  *
  * Two endpoints behind one function. With no campaign this is the general
@@ -364,14 +400,14 @@ export async function readPlaceholders(
     };
   }
 
-  let body: { placeholders?: unknown };
+  let body: { placeholders?: unknown; answers?: unknown };
   try {
     body = (await response.json()) as { placeholders?: unknown };
   } catch {
     return { ok: false, error: "Placeholders could not be loaded." };
   }
 
-  return { ok: true, items: named(body.placeholders) };
+  return { ok: true, items: named(body.placeholders), answers: summary(body.answers) };
 }
 
 /**

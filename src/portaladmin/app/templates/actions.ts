@@ -374,6 +374,6 @@ export async function loadPlaceholders(formId: string | null) {
 
   const read = await readPlaceholders(null, formId);
   return read.ok
-    ? { ok: true as const, items: read.items }
+    ? { ok: true as const, items: read.items, answers: read.answers }
     : { ok: false as const, error: read.error };
 }
