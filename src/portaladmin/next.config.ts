@@ -27,6 +27,23 @@ import type { NextConfig } from "next";
  * console that redirects to sign-in forever, with nothing in any log saying
  * why. The old default was atlas, so it could never have worked.
  */
+/*
+ * API_ORIGIN is set per environment in Vercel, not here.
+ *
+ * The fallback below is the local one and is only ever right on a laptop. Each
+ * Vercel project carries its own value per environment -- production points at
+ * production's harbor, preview at staging's -- because the two environments
+ * have different hostnames and a shared value would send one of them at the
+ * other's database.
+ *
+ * Read at build time, not at request time: the rewrite is produced when the
+ * app is built, so changing the variable in Vercel changes nothing until
+ * something rebuilds. Both portals also carry an ignoreCommand that skips the
+ * build when nothing in their directory changed, so a redeploy of the same
+ * commit is cancelled and keeps serving the previous value. An environment
+ * change therefore needs a commit that touches this directory -- which is what
+ * this comment is for.
+ */
 const apiOrigin =
   process.env.API_ORIGIN ?? "http://localhost:5050";
 
