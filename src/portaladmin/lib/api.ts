@@ -49,13 +49,32 @@ export async function apiFetch(
 ): Promise<Response> {
   const session = (await cookies()).get("mh_session");
 
+  const headers: Record<string, string> = {
+    ...proxyHeader,
+    ...(init.headers as Record<string, string> | undefined),
+    ...(session ? { cookie: `mh_session=${session.value}` } : {}),
+  };
+
+  // A JSON body says so, unless the caller already said something else.
+  //
+  // Without this the API answers 415 and nothing explains why: ASP.NET refuses
+  // to bind a body it has not been told the type of, before any handler runs,
+  // so there is no sentence from the API to show and the screen falls back to
+  // "that could not be saved". Three endpoints shipped that way -- saved
+  // values and both email-trigger writes -- because they build their own
+  // RequestInit instead of going through apiWrite, which sets it.
+  //
+  // Only for a string body. FormData has to set its own content type, because
+  // the boundary is chosen by the runtime and a header naming the wrong one
+  // makes the parts unreadable.
+  if (typeof init.body === "string"
+      && !Object.keys(headers).some((name) => name.toLowerCase() === "content-type")) {
+    headers["content-type"] = "application/json";
+  }
+
   return fetch(`${apiOrigin}/api${path}`, {
     ...init,
-    headers: {
-      ...proxyHeader,
-      ...init.headers,
-      ...(session ? { cookie: `mh_session=${session.value}` } : {}),
-    },
+    headers,
     // Never cached. Every page here renders somebody's data, and a cache that
     // outlives a request is a cache that can show one organizer another
     // organizer's view.
