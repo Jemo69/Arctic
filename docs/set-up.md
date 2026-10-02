@@ -7,16 +7,63 @@ longer, that is a bug in this document — open an issue.
 
 ## What you need first
 
-| | Version | Check with |
-|---|---|---|
-| .NET SDK | **10.x** | `dotnet --list-sdks` |
-| Node | **24.x** | `node -v` |
-| Docker | any recent | `docker info` |
+Five tools, and `dev.sh` refuses to start without any of them. The list is not
+a recommendation -- it is the loop the script actually runs, so if you have
+these it will get past its checks.
 
-`curl` and `openssl` too, which macOS and every Linux already have.
+| | Version | Check | Install on macOS |
+|---|---|---|---|
+| **Docker** | any recent | `docker info` | `brew install --cask docker` |
+| **.NET SDK** | **10.x** | `dotnet --list-sdks` | `brew install dotnet` |
+| **Node** (gives you npm) | **24 or newer** | `node -v` | `brew install node` |
+| **curl** | any | `curl --version` | already there |
+| **openssl** | any | `openssl version` | already there |
 
-.NET 10 rather than 8: .NET 8 leaves support in November 2026, roughly when
-this platform would be running.
+On Linux, install Docker Engine from docker.com, .NET from
+`packages.microsoft.com`, and Node from NodeSource or your package manager. On
+Windows, use WSL2 and follow the Linux instructions inside it -- `dev.sh` is a
+shell script and expects a Unix shell.
+
+Everything above in one line, if you have Homebrew:
+
+```bash
+brew install dotnet node && brew install --cask docker
+```
+
+### Docker has to be running, not just installed
+
+`dev.sh` checks this separately from whether the command exists, because
+installing Docker Desktop and never opening it is the most common way to fail
+here. Open the app and wait for the whale to settle before you run anything.
+
+```bash
+docker info >/dev/null 2>&1 && echo running || echo "start Docker Desktop"
+```
+
+### Five ports have to be free
+
+`dev.sh` checks these too and stops rather than fighting whatever already
+holds one: **5080** (atlas), **5050** (harbor), **3000** (portalweb), **3001**
+(portaladmin), **3002** (portalforms).
+
+```bash
+lsof -ti tcp:5080,5050,3000,3001,3002        # anything listed is in the way
+lsof -ti tcp:3000 | xargs kill               # how to clear one
+```
+
+### On the Node version
+
+CI builds on Node 24 (`.github/workflows/build-node.yml`), and there is no
+`.nvmrc`, so nothing pins your local version. Newer works -- 26 is in use --
+but 24 is the one the build is actually verified against, so prefer it if you
+are choosing.
+
+### What you do not need for local development
+
+`gh`, `az`, `aws` and `vercel` are for deploying and operating the system, not
+for running it. Nothing in `dev.sh` touches them. Install them when you reach
+`deploy/azure/README.md` or the runbooks, and not before -- a local stack needs
+no cloud account at all.
 
 ---
 
