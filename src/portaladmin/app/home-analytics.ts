@@ -25,6 +25,40 @@ export type AnalyticsView = {
 export type AnalyticsResult = { data: AnalyticsView; updatedAt: string; error?: never }
   | { data?: never; updatedAt?: never; error: string };
 
+export type EmailAnalytics = {
+  sentEmails: number;
+  trackedEmails: number;
+  clickedEmails: number;
+  totalClicks: number;
+  clickedRecipients: number;
+  trackingEnabledTemplates: number;
+  templates: { name: string; clicks: number; clickedEmails: number }[];
+};
+export type EmailCampaignPerformance = {
+  id: string;
+  name: string;
+  sentAt: string;
+  sentEmails: number;
+  trackedEmails: number;
+  clickedEmails: number;
+  totalClicks: number;
+  previewHtml: string | null;
+};
+export type EmailView = {
+  events: EventSummary[];
+  chosen: EventSummary | null;
+  analytics: EmailAnalytics | null;
+};
+export type BestEmailsView = {
+  events: EventSummary[];
+  chosen: EventSummary | null;
+  campaigns: EmailCampaignPerformance[] | null;
+};
+export type EmailResult = { data: EmailView; updatedAt: string; error?: never }
+  | { data?: never; updatedAt?: never; error: string };
+export type BestEmailsResult = { data: BestEmailsView; updatedAt: string; error?: never }
+  | { data?: never; updatedAt?: never; error: string };
+
 export const numbers = new Intl.NumberFormat("en-US");
 export const percentage = (count: number, total: number) => total > 0
   ? new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 }).format(count / total) : "0%";

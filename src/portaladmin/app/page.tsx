@@ -8,8 +8,8 @@ import { HomeFooter } from "./home-footer";
 import { HomeGreeting } from "./home-greeting";
 import { HomeHeader } from "./home-header";
 import { HomeInsights } from "./home-insights";
-import { HomeBestEmails, HomeEmail, HomeEmailView } from "./home-email";
-import { BestEmailsCard } from "./home-best-emails";
+import { HomeEmail } from "./home-email-panel";
+import { HomeEmailView } from "./home-email";
 import { HomeOverview } from "./home-overview";
 import { Shell } from "./shell";
 import styles from "./home.module.css";
@@ -17,10 +17,9 @@ import styles from "./home.module.css";
 export default async function Home() {
   const person = await currentPerson();
   if (!person) redirect("/sign-in");
-  const email = person.permissions.has("email.view_stats")
+  const canViewEmail = person.permissions.has("email.view_stats");
+  const email = canViewEmail
     ? <Suspense fallback={<HomeEmailView />}><HomeEmail /></Suspense> : null;
-  const bestEmails = person.permissions.has("email.view_stats")
-    ? <Suspense fallback={<BestEmailsCard />}><HomeBestEmails /></Suspense> : null;
   const greeting = <HomeGreeting name={displayName(person.fullName, person.email)} />;
 
   return (
@@ -28,8 +27,8 @@ export default async function Home() {
       <div className={styles.home}>
         <HomeHeader teams={person.teams} />
         {person.permissions.has("applications.view") ? (
-          <Suspense fallback={<HomeOverview email={email} bestEmails={bestEmails} greeting={greeting} />}>
-            <HomeInsights email={email} bestEmails={bestEmails} greeting={greeting} />
+          <Suspense fallback={<HomeOverview canViewEmail={canViewEmail} greeting={greeting} />}>
+            <HomeInsights canViewEmail={canViewEmail} greeting={greeting} />
           </Suspense>
         ) : <section className={styles.empty}>
           <Icon icon={UserGroupIcon} size={28} />

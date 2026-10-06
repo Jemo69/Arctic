@@ -1,8 +1,13 @@
 import type { ReactNode } from "react";
-import { loadApplicantAnalytics } from "./home-actions";
+import { loadApplicantAnalytics, loadBestEmails, loadEmailAnalytics } from "./home-actions";
 import { HomeOverview } from "./home-overview";
 
-export async function HomeInsights({ email, bestEmails, greeting }: { email?: ReactNode; bestEmails?: ReactNode; greeting: ReactNode }) {
-  const result = await loadApplicantAnalytics();
-  return <HomeOverview key={JSON.stringify(result)} initial={result} email={email} bestEmails={bestEmails} greeting={greeting} />;
+export async function HomeInsights({ canViewEmail, greeting }: { canViewEmail: boolean; greeting: ReactNode }) {
+  const [result, email, bestEmails] = await Promise.all([
+    loadApplicantAnalytics(),
+    canViewEmail ? loadEmailAnalytics() : Promise.resolve(undefined),
+    canViewEmail ? loadBestEmails() : Promise.resolve(undefined),
+  ]);
+  return <HomeOverview key={JSON.stringify(result)} initial={result}
+    initialEmail={email} initialBest={bestEmails} canViewEmail={canViewEmail} greeting={greeting} />;
 }

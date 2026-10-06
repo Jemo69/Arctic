@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using MorganHacks.Applications.Services;
 using MorganHacks.Identity.Services;
 using MorganHacks.Lark.Data.Data;
 using NpgsqlTypes;
@@ -15,7 +16,8 @@ public class EmailCampaignAnalyticsTests(ApplicationsDatabase db) : IClassFixtur
     [Fact]
     public async Task Ranks_five_broadcasts_by_unique_click_rate_without_counting_links_as_emails()
     {
-        var aggregate = await Campaign("Aggregate");
+        var eventId = await db.AddEventAsync();
+        var aggregate = await Campaign("Aggregate", eventId: eventId);
         var first = await Message(aggregate, 3);
         await Link(first, "second", 4);
         await Message(aggregate, 2);
@@ -23,26 +25,26 @@ public class EmailCampaignAnalyticsTests(ApplicationsDatabase db) : IClassFixtur
         await Message(aggregate, null);
         await Message(aggregate, 200, sent: false);
 
-        var winner = await Campaign("Highest rate");
+        var winner = await Campaign("Highest rate", eventId: eventId);
         for (var i = 0; i < 3; i++) await Message(winner, 1);
         for (var i = 0; i < 5; i++)
         {
-            var campaign = await Campaign($"Half clicked {i}");
+            var campaign = await Campaign($"Half clicked {i}", eventId: eventId);
             await Message(campaign, 1);
             await Message(campaign, 0);
         }
-        var untracked = await Campaign("Untracked");
+        var untracked = await Campaign("Untracked", eventId: eventId);
         await Message(untracked, null);
-        var test = await Campaign("Test", key: $"test_{Guid.NewGuid():N}");
+        var test = await Campaign("Test", key: $"test_{Guid.NewGuid():N}", eventId: eventId);
         await Message(test, 100);
-        var transactional = await Campaign("Sign-in", kind: "transactional");
+        var transactional = await Campaign("Sign-in", kind: "transactional", eventId: eventId);
         await Message(transactional, 100);
-        var automatic = await Campaign("Automatic", authored: false);
+        var automatic = await Campaign("Automatic", authored: false, eventId: eventId);
         await Message(automatic, 100);
-        var draft = await Campaign("Not sent");
+        var draft = await Campaign("Not sent", eventId: eventId);
         await Message(draft, 100, sent: false);
 
-        var result = await new EmailAnalyticsStore(db.DataSource).ReadBestCampaignsAsync(false);
+        var result = await new EmailAnalyticsStore(db.DataSource).ReadBestCampaignsAsync(eventId, false);
 
         Assert.Equal(5, result.Count);
         Assert.Equal(winner, result[0].Id);
@@ -58,12 +60,13 @@ public class EmailCampaignAnalyticsTests(ApplicationsDatabase db) : IClassFixtur
     [Fact]
     public async Task Campaign_metrics_require_statistics_access_and_previews_require_template_access()
     {
-        var campaign = await Campaign("Preview permissions");
+        var eventId = await db.AddEventAsync();
+        var campaign = await Campaign("Preview permissions", eventId: eventId);
         await Message(campaign, 1);
         using var app = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.UseSetting("ConnectionStrings:Postgres", db.ConnectionString));
         using var client = app.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });
-        const string path = "/admin/analytics/email/campaigns";
+        var path = $"/admin/analytics/email/campaigns?eventId={eventId}";
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(path)).StatusCode);
         var person = await db.AddPersonAsync($"viewer-{Guid.NewGuid():N}@example.test");
         using var scope = app.Services.CreateScope();
@@ -79,14 +82,15 @@ public class EmailCampaignAnalyticsTests(ApplicationsDatabase db) : IClassFixtur
         Assert.DoesNotContain("https://example.test", json);
         var metrics = await response.Content.ReadFromJsonAsync<CampaignsResponse>();
         Assert.NotNull(metrics);
-        Assert.All(metrics.Campaigns, row => Assert.Null(row.PreviewHtml));
+        Assert.All(metrics.Campaigns!, row => Assert.Null(row.PreviewHtml));
         await db.GrantAsync(person, "email.manage_templates");
         var previews = await client.GetFromJsonAsync<CampaignsResponse>(path);
         Assert.NotNull(previews);
-        Assert.Contains(previews.Campaigns, row => row.Id == campaign && row.PreviewHtml == "<p>private-template-content</p>");
+        Assert.Contains(previews.Campaigns!, row => row.Id == campaign && row.PreviewHtml == "<p>private-template-content</p>");
     }
 
-    private async Task<Guid> Campaign(string name, string kind = "broadcast", string? key = null, bool authored = true)
+    private async Task<Guid> Campaign(string name, string kind = "broadcast", string? key = null,
+        bool authored = true, Guid? eventId = null)
     {
         var actor = await db.AddPersonAsync($"author-{Guid.NewGuid():N}@example.test");
         await using var command = db.DataSource.CreateCommand("""
@@ -95,14 +99,15 @@ public class EmailCampaignAnalyticsTests(ApplicationsDatabase db) : IClassFixtur
                 VALUES (@key, @name, @kind, 'Subject', '<p>private-template-content</p>', 'Body', 'mail', 'example.test')
                 RETURNING id
             )
-            INSERT INTO notify.campaigns (template_id, name, created_by)
-            SELECT id, @name, CASE WHEN @authored THEN @actor END FROM template RETURNING id
+            INSERT INTO notify.campaigns (template_id, name, created_by, event_id)
+            SELECT id, @name, CASE WHEN @authored THEN @actor END, @eventId FROM template RETURNING id
             """);
         command.Parameters.AddWithValue("key", key ?? $"campaign-metrics-{Guid.NewGuid():N}");
         command.Parameters.AddWithValue("name", name);
         command.Parameters.AddWithValue("kind", kind);
         command.Parameters.AddWithValue("authored", authored);
         command.Parameters.AddWithValue("actor", actor);
+        command.Parameters.AddWithValue("eventId", (object?)eventId ?? DBNull.Value);
         return (Guid)(await command.ExecuteScalarAsync())!;
     }
 
@@ -137,5 +142,5 @@ public class EmailCampaignAnalyticsTests(ApplicationsDatabase db) : IClassFixtur
         await command.ExecuteNonQueryAsync();
     }
 
-    private sealed record CampaignsResponse(EmailCampaignPerformance[] Campaigns);
+    private sealed record CampaignsResponse(EventSummary[] Events, EventSummary? Chosen, EmailCampaignPerformance[]? Campaigns);
 }

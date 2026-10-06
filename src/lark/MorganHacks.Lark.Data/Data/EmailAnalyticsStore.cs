@@ -190,8 +190,14 @@ public sealed class EmailAnalyticsStore(NpgsqlDataSource dataSource)
         return new CampaignEmailAnalytics(sent, tracked, clicked, clicks, trackingEnabled, content, links, engagement);
     }
 
+    /// <summary>The broadcasts that performed best on one event.</summary>
+    /// <remarks>
+    /// Ranked within the event for the same reason <see cref="ReadAsync(Guid, CancellationToken)"/>
+    /// is scoped to one: a click rate averaged across every event a workspace
+    /// has ever run describes none of them.
+    /// </remarks>
     public async Task<IReadOnlyList<EmailCampaignPerformance>> ReadBestCampaignsAsync(
-        bool includePreviews, CancellationToken ct = default)
+        Guid eventId, bool includePreviews, CancellationToken ct = default)
     {
         const string sql = """
             WITH link_totals AS (
@@ -208,6 +214,7 @@ public sealed class EmailAnalyticsStore(NpgsqlDataSource dataSource)
                   JOIN notify.messages m ON m.campaign_id = c.id
                   LEFT JOIN link_totals l ON l.message_id = m.id
                  WHERE c.created_by IS NOT NULL AND t.kind = 'broadcast'
+                   AND c.event_id = @eventId
                    AND t.key !~ '^test_[0-9a-f]{32}$' AND m.sent_at IS NOT NULL
                  GROUP BY c.id, c.name, c.template_id
             )
@@ -220,6 +227,7 @@ public sealed class EmailAnalyticsStore(NpgsqlDataSource dataSource)
              LIMIT 5
             """;
         await using var command = dataSource.CreateCommand(sql);
+        command.Parameters.AddWithValue("eventId", eventId);
         command.Parameters.AddWithValue("previews", includePreviews);
         await using var reader = await command.ExecuteReaderAsync(ct);
         var campaigns = new List<EmailCampaignPerformance>();
@@ -230,7 +238,26 @@ public sealed class EmailAnalyticsStore(NpgsqlDataSource dataSource)
         return campaigns;
     }
 
-    public async Task<EmailAnalytics> ReadAsync(CancellationToken ct = default)
+    /// <summary>How one event's mail performed, across every campaign it sent.</summary>
+    /// <remarks>
+    /// Scoped to the event rather than to the workspace. Unscoped, the click rate
+    /// this answers with is a weighted average over every event ever mailed —
+    /// a number that is arithmetically correct and means nothing to anybody
+    /// reading it, which is worse than having no number.
+    /// <para>
+    /// Only campaigns that name the event count, which today means only the
+    /// application-status segment: the explicit-list and form-shaped segments
+    /// deliberately leave <c>notify.campaigns.event_id</c> null, so mail sent to
+    /// a hand-picked set of addresses stays out of every event's totals rather
+    /// than landing on whichever one happened to be running.
+    /// </para>
+    /// <para>
+    /// The tracking-enabled count is scoped too, to the templates this event's
+    /// campaigns used, so the one number describing workspace setup does not
+    /// sit in the middle of a panel describing one event.
+    /// </para>
+    /// </remarks>
+    public async Task<EmailAnalytics> ReadAsync(Guid eventId, CancellationToken ct = default)
     {
         const string sql = """
             WITH link_totals AS (
@@ -243,12 +270,18 @@ public sealed class EmailAnalyticsStore(NpgsqlDataSource dataSource)
                   JOIN notify.campaigns c ON c.id = m.campaign_id
                   JOIN notify.templates t ON t.id = c.template_id
                   LEFT JOIN link_totals l ON l.message_id = m.id
-                 WHERE m.sent_at IS NOT NULL AND t.key !~ '^test_[0-9a-f]{32}$'
+                 WHERE m.sent_at IS NOT NULL AND c.event_id = @eventId
+                   AND t.key !~ '^test_[0-9a-f]{32}$'
             )
             SELECT count(*), count(*) FILTER (WHERE tracked), count(*) FILTER (WHERE clicks > 0),
                    COALESCE(sum(clicks), 0)::bigint,
                    count(DISTINCT lower(to_email::text)) FILTER (WHERE clicks > 0),
-                   (SELECT count(*) FROM notify.templates WHERE click_tracking AND superseded_at IS NULL),
+                   (SELECT count(DISTINCT c2.template_id)
+                      FROM notify.campaigns c2
+                      JOIN notify.templates t2 ON t2.id = c2.template_id
+                     WHERE c2.event_id = @eventId AND t2.click_tracking
+                       AND t2.superseded_at IS NULL
+                       AND t2.key !~ '^test_[0-9a-f]{32}$'),
                    COALESCE((SELECT jsonb_agg(ranked) FROM (
                        SELECT name, sum(clicks)::bigint AS clicks,
                               count(*) FILTER (WHERE clicks > 0) AS "clickedEmails"
@@ -258,6 +291,7 @@ public sealed class EmailAnalyticsStore(NpgsqlDataSource dataSource)
               FROM sent
             """;
         await using var command = dataSource.CreateCommand(sql);
+        command.Parameters.AddWithValue("eventId", eventId);
         await using var reader = await command.ExecuteReaderAsync(ct);
         await reader.ReadAsync(ct);
         return new EmailAnalytics(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2),
