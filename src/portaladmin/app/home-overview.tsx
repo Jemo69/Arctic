@@ -14,16 +14,13 @@ import { Icon, type IconSvgElement } from "@/components/ui/icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SchoolLogo } from "@/components/ui/school-logo";
 import { NavigationLink as Link } from "@/components/ui/navigation-link";
-import { loadApplicantAnalytics, loadBestEmails, loadEmailAnalytics } from "./home-actions";
+import { loadApplicantAnalytics } from "./home-actions";
 import { ResponseActivity } from "./home-activity";
-import { BestEmailsCard } from "./home-best-emails";
-import { HomeEmailView } from "./home-email";
 import { HomeUpdatedAt } from "./home-updated-at";
 import { analyticsColors, applicationColors, categoryColor, type AnalyticsTone } from "./home-palette";
 import {
   applicantsUrl, numbers, percentage, statusLabels,
   type SchoolBucket, type AnalyticsResult, type ApplicantAnalytics,
-  type BestEmailsResult, type EmailResult,
 } from "./home-analytics";
 import styles from "./home-overview.module.css";
 
@@ -96,17 +93,12 @@ function Attention({ analytics, eventId, loading }: { analytics: ApplicantAnalyt
   </section>;
 }
 
-export function HomeOverview({ initial, initialEmail, initialBest, canViewEmail, greeting }: {
-  initial?: AnalyticsResult; initialEmail?: EmailResult; initialBest?: BestEmailsResult;
-  canViewEmail: boolean; greeting: ReactNode;
-}) {
+export function HomeOverview({ initial, email, bestEmails, greeting }: { initial?: AnalyticsResult; email?: ReactNode; bestEmails?: ReactNode; greeting: ReactNode }) {
   const [result, setResult] = useState(initial);
-  const [emailResult, setEmailResult] = useState(initialEmail);
-  const [bestResult, setBestResult] = useState(initialBest);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, startTransition] = useTransition();
   const [tab, setTab] = useState<"overview" | "applications" | "demographics" | "email">("overview");
-  const tabs = [...applicantTabs, ...(canViewEmail ? [{ id: "email" as const, label: "Email", icon: Mail01Icon }] : [])];
+  const tabs = [...applicantTabs, ...(email ? [{ id: "email" as const, label: "Email", icon: Mail01Icon }] : [])];
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const data = result?.data;
   const analytics = data?.analytics ?? null;
@@ -126,27 +118,13 @@ export function HomeOverview({ initial, initialEmail, initialBest, canViewEmail,
     ? "Applicant details will appear once your event receives applications." : "No submitted applications yet.";
   const demographicEmpty = data && !data.canViewResponses
     ? "Access to application responses is needed to see this breakdown." : breakdownEmpty;
-  const mail = emailResult?.data;
-  const best = bestResult?.data;
-  const bestEmails = canViewEmail ? <BestEmailsCard
-    campaigns={best ? best.campaigns ?? [] : undefined} scope={best?.chosen?.name}
-    error={Boolean(bestResult && !best)} /> : null;
 
-  // All three reads answer for the same event, so one selection has to move
-  // all three — a picker that changed the applicant totals and left the email
-  // totals on another event would be worse than not scoping at all.
   function load(eventId?: string) {
     startTransition(async () => {
       setError(null);
-      const [next, emails, campaigns] = await Promise.all([
-        loadApplicantAnalytics(eventId),
-        canViewEmail ? loadEmailAnalytics(eventId) : Promise.resolve(undefined),
-        canViewEmail ? loadBestEmails(eventId) : Promise.resolve(undefined),
-      ]);
+      const next = await loadApplicantAnalytics(eventId);
       if (next.error && data) setError(next.error);
       else setResult(next);
-      if (emails) setEmailResult(emails);
-      if (campaigns) setBestResult(campaigns);
     });
   }
 
@@ -163,7 +141,7 @@ export function HomeOverview({ initial, initialEmail, initialBest, canViewEmail,
   return <section className={styles.overview} aria-label="Applicant analytics" aria-busy={loading || refreshing}>
     <div className={styles.intro}>
       {greeting}
-      <div className={styles.eventControl}>
+      {tab !== "email" ? <div className={styles.eventControl}>
         <label htmlFor="analytics-event">Event</label>
         <div><Icon icon={Calendar03Icon} size={16} />
           <Select id="analytics-event" value={data?.chosen?.id ?? ""} disabled={!data?.events.length || refreshing}
@@ -172,7 +150,7 @@ export function HomeOverview({ initial, initialEmail, initialBest, canViewEmail,
               : <option value="">{loading ? "Loading events…" : failed ? "Events unavailable" : "No events yet"}</option>}
           </Select>
         </div>
-      </div>
+      </div> : null}
     </div>
     <>
       <div className={styles.tabs} role="tablist" aria-label="Dashboard sections">
@@ -182,7 +160,7 @@ export function HomeOverview({ initial, initialEmail, initialBest, canViewEmail,
           onClick={() => setTab(item.id)} onKeyDown={(event) => move(event, index)}>
           <Icon icon={item.icon} size={15} />{item.label}
         </button>)}
-        <span className={styles.scopeNote}>{refreshing ? "Updating…" : "All-time totals · selected event"}</span>
+        <span className={styles.scopeNote}>{refreshing ? "Updating…" : tab === "email" ? "All-time · across the workspace" : "All-time totals · selected event"}</span>
       </div>
       {error ? <ErrorToast message={error} /> : null}
       {!failed && tab !== "email" ? <div className={styles.stats}>
@@ -228,13 +206,11 @@ export function HomeOverview({ initial, initialEmail, initialBest, canViewEmail,
             <Breakdown loading={loading} title="Hackathon experience" subtitle="Submitted applications" items={demographics?.experience ?? []}
               total={submitted} empty={demographicEmpty} icon={UserGroupIcon} />
           </div> : null}
-          {tab === "email" ? <HomeEmailView data={mail?.analytics} scope={mail?.chosen?.name}
-            error={Boolean(emailResult && !mail)} /> : null}
+          {tab === "email" ? email : null}
         </> : null}
       </div>)}
       {!failed && tab === "demographics" ? <p className={styles.dataNote}>Percentages use submitted applications. Unanswered questions appear as “Not provided”.</p> : null}
       {tab !== "email" && result?.updatedAt ? <HomeUpdatedAt at={result.updatedAt} /> : null}
-      {tab === "email" && emailResult?.updatedAt ? <HomeUpdatedAt at={emailResult.updatedAt} /> : null}
     </>
   </section>;
 }
