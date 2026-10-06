@@ -1,28 +1,27 @@
+"use client";
+
 import { Mail01Icon, Link01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
 import { EmailMetricsSkeleton } from "@/components/ui/page-skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { apiFetch } from "@/lib/api";
-import { numbers, percentage } from "./home-analytics";
+import { numbers, percentage, type EmailAnalytics } from "./home-analytics";
 import { categoryColor } from "./home-palette";
-import { HomeUpdatedAt } from "./home-updated-at";
-import { BestEmailsCard, type EmailCampaignPerformance } from "./home-best-emails";
 import styles from "./home-overview.module.css";
 
-type EmailAnalytics = {
-  sentEmails: number;
-  trackedEmails: number;
-  clickedEmails: number;
-  totalClicks: number;
-  clickedRecipients: number;
-  trackingEnabledTemplates: number;
-  templates: { name: string; clicks: number; clickedEmails: number }[];
-};
-
-export function HomeEmailView({ data, error }: { data?: EmailAnalytics; error?: boolean }) {
+/**
+ * How one event's mail performed.
+ *
+ * Presentational only, so the dashboard can swap the event underneath it
+ * without a page load. `scope` names the event the numbers are for, and is
+ * absent only while the workspace has no events to answer for.
+ */
+export function HomeEmailView({ data, scope, error }: {
+  data?: EmailAnalytics | null; scope?: string; error?: boolean;
+}) {
   return <section className={styles.emailSection} aria-labelledby="email-performance-title">
     <div className={styles.sectionHeading}>
-      <div><h2 id="email-performance-title">Email performance</h2><p>All-time · across the workspace</p></div>
+      <div><h2 id="email-performance-title">Email performance</h2>
+        <p>{scope ? `${scope} · all time` : "All-time · across the workspace"}</p></div>
       <Icon icon={Mail01Icon} size={19} className={styles.sectionIcon} />
     </div>
     {error ? <p className={styles.dataNote}>Email analytics couldn’t load. Try refreshing the dashboard.</p>
@@ -59,26 +58,4 @@ export function HomeEmailView({ data, error }: { data?: EmailAnalytics; error?: 
       </div>}
     {data && data.totalClicks > 0 ? <p className={styles.dataNote}>Click counts can include automated email security checks.</p> : null}
   </section>;
-}
-
-export async function HomeEmail() {
-  try {
-    const response = await apiFetch("/admin/analytics/email", { signal: AbortSignal.timeout(10000) });
-    if (!response.ok) return <HomeEmailView error />;
-    const data = await response.json() as EmailAnalytics;
-    return <><HomeEmailView data={data} /><HomeUpdatedAt at={new Date().toISOString()} /></>;
-  } catch {
-    return <HomeEmailView error />;
-  }
-}
-
-export async function HomeBestEmails() {
-  try {
-    const response = await apiFetch("/admin/analytics/email/campaigns", { signal: AbortSignal.timeout(10000) });
-    if (!response.ok) return <BestEmailsCard error />;
-    const data = await response.json() as { campaigns: EmailCampaignPerformance[] };
-    return <BestEmailsCard campaigns={data.campaigns} />;
-  } catch {
-    return <BestEmailsCard error />;
-  }
 }

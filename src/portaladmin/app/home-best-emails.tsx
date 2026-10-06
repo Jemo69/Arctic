@@ -7,29 +7,18 @@ import { ListBodySkeleton } from "@/components/ui/page-skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NavigationLink as Link } from "@/components/ui/navigation-link";
 import { emailDocument } from "@/components/templates/email-preview";
-import { numbers, percentage } from "./home-analytics";
+import { numbers, percentage, type EmailCampaignPerformance } from "./home-analytics";
 import styles from "./home-best-emails.module.css";
 
-export type EmailCampaignPerformance = {
-  id: string;
-  name: string;
-  sentAt: string;
-  sentEmails: number;
-  trackedEmails: number;
-  clickedEmails: number;
-  totalClicks: number;
-  previewHtml: string | null;
-};
-
-export function BestEmailsCard({ campaigns, error = false }: {
-  campaigns?: EmailCampaignPerformance[]; error?: boolean;
+export function BestEmailsCard({ campaigns, scope, error = false }: {
+  campaigns?: EmailCampaignPerformance[]; scope?: string; error?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
 
   return <section className={styles.card} aria-labelledby="best-emails-title" aria-busy={!campaigns && !error}>
     <header className={styles.header}>
       <div className={styles.heading}><h2 id="best-emails-title">Best performing emails</h2>
-        <span>All time · ranked by click rate</span></div>
+        <span>{scope ? `${scope} · ranked by click rate` : "All time · ranked by click rate"}</span></div>
       <div className={styles.actions}>
         <Link href="/mail"><Icon icon={Mail01Icon} size={15} />See all emails</Link>
         <button type="button" aria-label={expanded ? "Collapse best performing emails" : "Expand best performing emails"}
