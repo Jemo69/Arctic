@@ -73,10 +73,23 @@ public static class PortalEndpoints
         portal.MapPatch("/profile", SaveProfile);
         portal.MapPost("/rsvp", AnswerRsvp);
         portal.MapGet("/messages", Messages);
-        portal.MapGet("/announcements", Announcements);
-        portal.MapPost("/announcements/{id:guid}/vote", VoteAnnouncement);
-        portal.MapPut("/announcements/{id:guid}/reaction", ReactToAnnouncement);
-        portal.MapDelete("/announcements/{id:guid}/reaction", RemoveAnnouncementReaction);
+        // The announcement routes, and only these, are gated on status.
+        //
+        // Everything else under /portal is the applicant's own: their decision,
+        // their profile, their resume, the mail we sent them. Somebody who
+        // withdrew should still be able to read why the door is shut, and
+        // PortalResumeEndpoints goes to some trouble to tell them.
+        //
+        // The feed is the exception because it is the one thing here that is
+        // not theirs. It is filtered by event and nothing else -- there is no
+        // audience column to filter on -- so it carries the venue, the
+        // schedule and whatever an organizer posts an hour before doors, to
+        // anybody who ever applied. That is the hole; the status screen never
+        // was one.
+        portal.MapGet("/announcements", Announcements).RequireComing();
+        portal.MapPost("/announcements/{id:guid}/vote", VoteAnnouncement).RequireComing();
+        portal.MapPut("/announcements/{id:guid}/reaction", ReactToAnnouncement).RequireComing();
+        portal.MapDelete("/announcements/{id:guid}/reaction", RemoveAnnouncementReaction).RequireComing();
         portal.MapGet("/check-in", CheckIn);
 
         // POST rather than DELETE, and no id in the path. There is no resource
@@ -134,6 +147,68 @@ public static class PortalEndpoints
     /// absence of an application is a state of the page, not a missing
     /// resource.
     /// </remarks>
+    /// <summary>
+    /// Shuts the event feed to anybody who is not coming to it.
+    /// </summary>
+    /// <remarks>
+    /// On the announcement routes rather than on the group, because the rest of
+    /// the portal is the applicant's own and a withdrawn applicant should still
+    /// be able to read why. The front end has its own redirect, but a layout
+    /// check only decides what is drawn -- these routes answer on their own,
+    /// and a gate the API does not hold is not a gate.
+    /// <para>
+    /// This closes a real hole rather than tidying one. Until now the group
+    /// asked for a session and a feature flag and nothing else, so anybody who
+    /// had ever applied -- rejected, withdrawn, waitlisted -- could sign in and
+    /// read every announcement for the event, which is where an organizer puts
+    /// the venue, the schedule and the Discord invite. RSVP and the check-in
+    /// code were already gated by status, which is exactly why it looked right
+    /// from the organizer side: the writes were guarded and the reading was not.
+    /// </para>
+    /// <para>
+    /// 404 rather than 403, matching <see cref="FeatureExtensions.RequireFeature"/>
+    /// above it. Somebody who is not coming should find a portal that is not
+    /// there, not one that tells them they are not allowed in -- and the two
+    /// gates on this group should not answer a rejected applicant differently
+    /// depending on which of them stopped them.
+    /// </para>
+    /// <para>
+    /// One extra read per portal request, by the same path
+    /// <see cref="IApplicantPortalStore.FindForPersonAsync"/> already takes --
+    /// scoped to the caller's own person id, never to an id from the request.
+    /// </para>
+    /// </remarks>
+    private static TBuilder RequireComing<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder
+    {
+        builder.AddEndpointFilter(async (context, next) =>
+        {
+            var http = context.HttpContext;
+            var store = http.RequestServices.GetRequiredService<IApplicantPortalStore>();
+            var application = await store.FindForPersonAsync(http.PersonId(), http.RequestAborted);
+
+            // No application passes. It sounds like the stricter choice to
+            // refuse it, but there is nothing to refuse: the feed is scoped by
+            // the event of the reader's own application, so somebody without
+            // one matches no rows and reads an empty list either way. Turning
+            // that into a 404 would only break the page somebody sees between
+            // signing in and starting an application, which
+            // Somebody_who_has_not_started_still_gets_a_page exists to keep --
+            // not having applied yet is a state of the page rather than an
+            // error.
+            //
+            // A decided application is the case this is here for.
+            if (application is not null && !PortalAccess.Allowed.Contains(application.Status))
+            {
+                return Results.NotFound();
+            }
+
+            return await next(context);
+        });
+
+        return builder;
+    }
+
     private static async Task<IResult> Me(
         HttpContext http, IApplicantPortalStore store, CancellationToken ct)
     {

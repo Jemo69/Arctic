@@ -237,7 +237,7 @@ public class PortalTests(IdentityDatabase db)
         // read as the portal being broken.
         var person = await db.AddPersonAsync(Unique("empty"));
 
-        var response = await Client().SendAsync(Get("/portal/me", await SignIn(person)));
+        var response = await Client().SendAsync(Get("/portal/announcements", await SignIn(person)));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -308,6 +308,66 @@ public class PortalTests(IdentityDatabase db)
         {
             Assert.DoesNotContain(wire, body, StringComparison.Ordinal);
         }
+    }
+
+    [Theory]
+    [InlineData(ApplicationStatus.Accepted)]
+    [InlineData(ApplicationStatus.Confirmed)]
+    [InlineData(ApplicationStatus.CheckedIn)]
+    public async Task The_feed_opens_for_somebody_who_is_coming(ApplicationStatus status)
+    {
+        var person = await db.AddPersonAsync(Unique("coming"));
+        var eventId = await AddEventAsync(decisionsAnnouncedAt: DateTimeOffset.UtcNow.AddDays(-1));
+        var application = await AddApplicationAsync(eventId, person, ApplicationStatus.Incomplete);
+        await Decide(application, status);
+
+        var response = await Client().SendAsync(Get("/portal/me", await SignIn(person)));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// The event feed is shut to anybody who is not coming.
+    /// </summary>
+    /// <remarks>
+    /// Announcements are the reason this matters rather than the status screen.
+    /// They are filtered by event and nothing else, so before this gate existed
+    /// a rejected applicant could read the venue, the schedule and whatever an
+    /// organizer posted an hour before doors. RSVP and the check-in code were
+    /// already gated, which is what made the gap easy to miss: the writes were
+    /// guarded and the reading was not.
+    /// <para>
+    /// 404 rather than 403, matching the feature gate on the same group. A
+    /// portal somebody is not in should look like a portal that is not there.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(ApplicationStatus.Incomplete)]
+    [InlineData(ApplicationStatus.Submitted)]
+    [InlineData(ApplicationStatus.UnderReview)]
+    [InlineData(ApplicationStatus.Rejected)]
+    [InlineData(ApplicationStatus.Waitlisted)]
+    [InlineData(ApplicationStatus.Declined)]
+    [InlineData(ApplicationStatus.Withdrawn)]
+    public async Task The_feed_is_shut_to_somebody_who_is_not(ApplicationStatus status)
+    {
+        var person = await db.AddPersonAsync(Unique("notcoming"));
+        var eventId = await AddEventAsync(decisionsAnnouncedAt: DateTimeOffset.UtcNow.AddDays(-1));
+        var application = await AddApplicationAsync(eventId, person, ApplicationStatus.Incomplete);
+        await Decide(application, status);
+
+        var cookie = await SignIn(person);
+        var client = Client();
+
+        var feed = await client.SendAsync(Get("/portal/announcements", cookie));
+        Assert.Equal(HttpStatusCode.NotFound, feed.StatusCode);
+
+        // And the rest of the portal is still theirs. Shutting the whole thing
+        // would take away the sentence a withdrawn applicant needs -- their own
+        // decision, their own resume, the mail we sent them. Only the feed is
+        // not theirs.
+        var own = await client.SendAsync(Get("/portal/me", cookie));
+        Assert.Equal(HttpStatusCode.OK, own.StatusCode);
     }
 
     // --------------------------------------------------------------- writes ---

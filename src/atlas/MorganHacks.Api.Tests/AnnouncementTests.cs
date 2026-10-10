@@ -819,14 +819,32 @@ public class AnnouncementTests(ApplicationsDatabase db)
     /// A real row rather than a person on their own, because the feed is
     /// scoped by the event of the reader's application and somebody without
     /// one is a different test.
+    /// <para>
+    /// Accepted, because the feed is only shown to somebody who is coming.
+    /// The column defaults to <c>incomplete</c>, which every test here used to
+    /// inherit -- and inheriting it is what made a feed readable by people who
+    /// had been turned down. A test that wants the other side of that gate
+    /// says so, in <c>PortalTests.The_feed_is_shut_to_somebody_who_is_not</c>.
+    /// </para>
     /// </remarks>
     private async Task<Guid> ApplicantAsync(Guid eventId)
     {
         var person = await db.AddPersonAsync(Unique("applicant"));
 
+        // Every column submitted_applications_are_complete asks for. The
+        // constraint holds for any status but incomplete and withdrawn, so
+        // seeding an accepted row means seeding a finished one -- which is the
+        // constraint doing its job: an accepted application missing an
+        // MLH-required field is not a thing that should exist.
         await using var cmd = db.DataSource.CreateCommand("""
-            INSERT INTO applications.applications (event_id, person_id, email)
-            VALUES (@eventId, @personId, @email)
+            INSERT INTO applications.applications (
+                event_id, person_id, email, status,
+                first_name, last_name, age, phone, school, level_of_study,
+                country, mlh_coc_agreed_at, mlh_data_sharing_at)
+            VALUES (
+                @eventId, @personId, @email, 'accepted',
+                'Reader', 'Onthelist', 20, '+1 555 0100', 'Morgan State',
+                'Undergraduate', 'United States', now(), now())
             """);
         cmd.Parameters.AddWithValue("eventId", eventId);
         cmd.Parameters.AddWithValue("personId", person);
