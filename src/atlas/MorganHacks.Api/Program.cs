@@ -4,8 +4,10 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using MorganHacks.Api;
+using MorganHacks.Applications.Assistant;
 using MorganHacks.Applications.Forms;
 using MorganHacks.Applications.Data;
+using MorganHacks.Applications.Logistics;
 using MorganHacks.Applications.Services;
 using MorganHacks.Applications.Storage;
 using MorganHacks.Applications.Segments;
@@ -179,6 +181,36 @@ builder.Services.AddSingleton<IApplicantStore, PostgresApplicantStore>();
 builder.Services.AddSingleton<PostgresApplicantAnalyticsStore>();
 builder.Services.AddSingleton<EmailAnalyticsStore>();
 
+// What logistics has, where it is, and how much of it is left. A singleton
+// for the same reason the stores above are: it holds nothing but the data
+// source, which is itself a singleton owning the connection pool.
+builder.Services.AddSingleton<IInventoryStore, PostgresInventoryStore>();
+
+// Reads a question into a plan.
+//
+// The word table is the floor and is always built, because it is what answers
+// when there is no key, when the provider is down, and when a model says
+// something this cannot make sense of. The model is layered over it rather
+// than replacing it, so the assistant degrades to quieter instead of broken.
+builder.Services.AddHttpClient("openai");
+builder.Services.AddSingleton<IQuestionRouter>(services =>
+{
+    var words = new WordRouter();
+    var key = builder.Configuration["OpenAI:ApiKey"];
+
+    if (string.IsNullOrWhiteSpace(key))
+    {
+        return words;
+    }
+
+    return new OpenAiQuestionRouter(
+        services.GetRequiredService<IHttpClientFactory>().CreateClient("openai"),
+        key,
+        builder.Configuration["OpenAI:Model"] ?? "gpt-4o-mini",
+        words,
+        services.GetRequiredService<ILogger<OpenAiQuestionRouter>>());
+});
+
 // Resumes.
 //
 // Azure Blob rather than the R2 the plan suggests. We own the subscription
@@ -204,6 +236,22 @@ builder.Services.AddSingleton<IResumeStore>(_ => new AzureResumeStore(
         // has no role on the storage account, and every upload fails with an
         // authorization error that reads like a missing role assignment.
         ManagedIdentityClientId = builder.Configuration["Resumes:ClientId"],
+    }));
+
+// The same storage account, a different container. Falls back to the resume
+// settings so a deployment that configured one has configured both -- there is
+// no arrangement where photos of boxes want their own account, and a second set
+// of variables would only be a second thing to forget.
+builder.Services.AddSingleton<IInventoryImageStore>(_ => new AzureInventoryImageStore(
+    new InventoryImageOptions
+    {
+        AccountName = builder.Configuration["Inventory:AccountName"]
+            ?? builder.Configuration["Resumes:AccountName"],
+        ConnectionString = builder.Configuration["Inventory:ConnectionString"]
+            ?? builder.Configuration["Resumes:ConnectionString"],
+        Container = builder.Configuration["Inventory:Container"] ?? "inventory",
+        ManagedIdentityClientId = builder.Configuration["Inventory:ClientId"]
+            ?? builder.Configuration["Resumes:ClientId"],
     }));
 
 // Enums cross the wire as names, matching how PostgresFormStore writes them
@@ -339,6 +387,39 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0,
             }));
 
+    // The click endpoint writes on every GET: it increments a counter and stamps
+    // first/last click. Without a limiter it is an unauthenticated write path,
+    // and its URL goes into every broadcast we send, so it is the most widely
+    // distributed URL we have. Not trivially abusable — a valid GUID is needed
+    // — but the pattern everywhere else here is that a public endpoint gets one.
+    //
+    // Generous, like webhook: a blast lands a building's worth of clicks on one
+    // campus NAT at once, and mail scanners pre-fetch links in bursts. What it
+    // has to hurt is somebody replaying a leaked GUID all night.
+    // Partitioned on the caller rather than the socket — see ClientAddress.
+    options.AddPolicy("email-click", http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ClientAddress.ForRateLimit(http, proxySecret),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    // Showing the confirm page and suppressing the recipient. A human does this
+    // once, so the allowance is small; the confirm mutates the suppression list,
+    // so neither half can be left open. Same partition as everywhere else.
+    options.AddPolicy("email-unsubscribe", http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ClientAddress.ForRateLimit(http, proxySecret),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(5),
+                QueueLimit = 0,
+            }));
+
     options.AddPolicy("magic-link", http =>
     {
         // The caller, not the front end that relayed them. See ClientAddress.
@@ -388,12 +469,14 @@ app.MapFormsAdmin();
 app.MapFormResponses();
 app.MapApplicants();
 app.MapApplicantAnalytics();
+app.MapInventory();
 app.MapEmailAnalytics();
 app.MapTemplates();
 app.MapEmailTracking();
 app.MapEmailUnsubscribe();
 app.MapCampaigns();
 app.MapSavedValues();
+app.MapAssistant();
 app.MapEmailTriggers();
 app.MapSesWebhook();
 

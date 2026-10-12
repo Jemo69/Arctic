@@ -35,13 +35,20 @@
   white-space: nowrap;
 }
 
-:global(main):has(.templateGallery) {
-  display: flex;
-  height: 100dvh;
-  flex-direction: column;
-  overflow: hidden;
-  padding-bottom: 0;
-}
+/*
+ * No shell override here on purpose.
+ *
+ * This screen used to pin itself to the viewport -- height: 100dvh and
+ * overflow: hidden on main -- so the gallery scrolled inside a frame that did
+ * not move. That gave the page two scrollbars: one for the cards and one for
+ * everything else, and the cards' one was whatever height was left after the
+ * panels below had taken theirs. Saved values grows a row per value, so the
+ * gallery shrank as the data did, down to 89px of a 699px card.
+ *
+ * Now it flows like every other screen in the console. The cards grow to the
+ * height they need, the window scrolls once, and the panels are below the
+ * gallery where somebody scrolling down expects to find them.
+ */
 
 .templateGallery {
   position: relative;
@@ -55,12 +62,12 @@
   flex: 0 0 auto;
 }
 
+/*
+ * Not a scroll container any more, despite the name. It keeps its padding and
+ * its focus ring; the window does the scrolling.
+ */
 .templateScroll {
-  flex: 1;
-  min-height: 0;
   padding: 0 0 28px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .templateScroll:focus-visible {
@@ -130,7 +137,14 @@
 }
 
 .selectionBar {
-  position: absolute;
+  /*
+   * Fixed, not absolute. It used to hang off .templateGallery, which was
+   * exactly viewport height while the shell was pinned -- so the bottom of the
+   * gallery was the bottom of the screen. Now the gallery is as tall as the
+   * cards, and an absolute bar would sit at the end of the page instead of
+   * floating above it.
+   */
+  position: fixed;
   bottom: max(24px, env(safe-area-inset-bottom));
   left: 50%;
   z-index: 100;
@@ -746,12 +760,6 @@ button.templateCard {
 
   .templateViewControls {
     justify-content: space-between;
-  }
-}
-
-@media (max-width: 48rem) {
-  :global(main):has(.templateGallery) {
-    height: calc(100dvh - 56px);
   }
 }
 

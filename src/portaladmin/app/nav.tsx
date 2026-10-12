@@ -4,8 +4,10 @@ import { NavigationLink as Link } from "@/components/ui/navigation-link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
 import {
+  Activity01Icon,
   ArrowRight01Icon,
   Audit02Icon,
+  BoxIcon,
   Calendar03Icon,
   FormIcon,
   Home03Icon,
@@ -74,9 +76,11 @@ const sectionIcons: Record<string, IconSvgElement> = {
   "/people": UserGroupIcon,
   "/forms": FormIcon,
   "/applicants": UserAccountIcon,
+  "/inventory": BoxIcon,
   "/mail": Mail01Icon,
   "/templates": Layout01Icon,
   "/audit": Audit02Icon,
+  "/d-day": Activity01Icon,
 };
 
 /** Sections are permission-filtered by the server; this only marks the route. */
