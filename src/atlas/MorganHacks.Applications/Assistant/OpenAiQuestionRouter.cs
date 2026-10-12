@@ -87,28 +87,80 @@ public sealed class OpenAiQuestionRouter(
         the question yourself and you never invent data.
 
         Reply as JSON only:
-          view     one of "applicants", "count", "dashboard"
-          statuses zero or more of the statuses listed below
+          view     "applicants", "count" or "analysis"
+          statuses one or more of the statuses listed below
           countOf  one status, only when view is "count"
+          metric   only when view is "analysis", one of:
+                     acceptance-rate  what share of applicants got in
+                     confirm-rate     what share of those offered said yes
+                     decline-rate     what share of those offered said no
+                     show-rate        what share of those who said yes arrived
+                     completion-rate  what share who start an application finish
+                     funnel           the whole pipeline, stage by stage
+                     outstanding      how much is still waiting on a decision
+                     pace             are applications speeding up or slowing
+                     busiest-day      the day the most applications arrived
+                     schools          where applicants are coming from
+                     reach            counts safe to give a sponsor or publish
+                     education        what year or level applicants are at
+                     experience       how many have hacked before
+                     gender           the gender mix, where it was asked
           explain  a short phrase describing what you understood, in plain
                    words, beginning with a noun ("applicants whose status is
                    submitted", "how many applicants are checked in")
-          refusal  a sentence, only when the question names nothing you can map
+          refusal  a sentence, only when the question maps to no status at all
+
+        Organizers do not say status names. Map what they mean:
+          waiting to hear back, pending, undecided   submitted, under_review
+          we turned down, said no to them            rejected
+          said yes to, we accepted, got in           accepted
+          accepted but has not replied or RSVPed     accepted
+          coming, RSVPed yes                         confirmed
+          bailed, dropped out, said no to us         declined
+          pulled out, asked to be removed            withdrawn
+          ran out of time to reply                   expired
+          never finished applying, half done         incomplete
+          on the fence, backup list                  waitlisted
+          turned up, arrived, scanned in             checked_in
+
+        Decide in this order:
+        1. Does a metric below answer it? Then view "analysis". Most questions
+           that are not about finding particular people land here.
+        2. Does it ask how many are in one status? Then view "count".
+        3. Does it ask to see a group of applicants? Then view "applicants".
+        4. Only if none of those fit, refuse.
 
         Rules:
-        - "how many"/"count of" with exactly one status means view "count".
+        - A question about a rate, a share, a proportion, a trend, or where
+          applicants come from is view "analysis" with a metric. "What is our
+          acceptance rate" is an analysis, not the accepted pile.
+        - "How many of the people we X actually Y" is a proportion wearing a
+          count's clothes, and is an analysis too: it asks what share of one
+          group did something, not how many are sitting in a status.
+        - A question about what to tell a sponsor, what to put on the website,
+          how much reach the event has, or what to put in a pitch or a deck is
+          metric "reach". It is the bundle of figures that carry no personal
+          data. "What should I tell a sponsor" is asking for those figures, not
+          for advice, so answer it with reach rather than refusing it as an
+          opinion.
+        - education, experience and gender come from what applicants wrote on
+          the form. Choose them when asked, and let the caller worry about
+          whether the asker may see them.
+        - "how many" or "count of" with exactly one status means view "count".
         - Somebody who "has not shown up", is a "no show", or "did not arrive"
           is status confirmed: statuses are exclusive, so everybody still at
           confirmed is exactly the set who said they were coming and have not
           checked in.
         - Honour negation. "submitted but not accepted" means statuses
           ["submitted"] and must not include accepted.
-        - A question about totals with no status named is view "dashboard".
-        - If the question asks for a judgement, an opinion, a decision about a
-          person, or anything outside these screens, set refusal and nothing
-          else.
+        - Prefer mapping over refusing. A question naming any group of
+          applicants, however loosely, has a status behind it.
+        - Refuse only for a judgement about who deserves a place, an opinion,
+          a decision somebody has to make, or a subject that is not this event
+          at all. Not having a status in it is not a reason to refuse -- most
+          of the metrics have no status in them either.
 
-        Statuses: 
+        Statuses:
         """ + string.Join(", ", Enum.GetValues<ApplicationStatus>().Select(s => s.ToWire()));
 
     private async Task<ModelPlan?> AskModelAsync(string question, CancellationToken ct)
@@ -187,9 +239,12 @@ public sealed class OpenAiQuestionRouter(
 
         switch (reply.View)
         {
-            case "dashboard":
-                return AssistantAnswer.For(new AssistantPlan(
-                    AssistantView.Dashboard, [], null, explain));
+            case "analysis":
+                return Metrics.TryGetValue(reply.Metric ?? "", out var metric)
+                    ? AssistantAnswer.For(new AssistantPlan(
+                        AssistantView.Analysis, [], null, explain)
+                    { Metric = metric })
+                    : null;
 
             case "count":
                 if (!ApplicationStatuses.TryParse(reply.CountOf ?? "", out var counted))
@@ -217,10 +272,36 @@ public sealed class OpenAiQuestionRouter(
         }
     }
 
+    /// <summary>
+    /// The readings the model may ask for, by the name it is given.
+    /// </summary>
+    /// <remarks>
+    /// A dictionary rather than an enum parse, so the names in the prompt and
+    /// the names accepted here cannot drift into each other's spelling.
+    /// </remarks>
+    private static readonly Dictionary<string, AssistantMetric> Metrics = new()
+    {
+        ["acceptance-rate"] = AssistantMetric.AcceptanceRate,
+        ["confirm-rate"] = AssistantMetric.ConfirmRate,
+        ["decline-rate"] = AssistantMetric.DeclineRate,
+        ["show-rate"] = AssistantMetric.ShowRate,
+        ["completion-rate"] = AssistantMetric.CompletionRate,
+        ["funnel"] = AssistantMetric.Funnel,
+        ["outstanding"] = AssistantMetric.Outstanding,
+        ["pace"] = AssistantMetric.Pace,
+        ["busiest-day"] = AssistantMetric.BusiestDay,
+        ["schools"] = AssistantMetric.Schools,
+        ["reach"] = AssistantMetric.Reach,
+        ["education"] = AssistantMetric.Education,
+        ["experience"] = AssistantMetric.Experience,
+        ["gender"] = AssistantMetric.Gender,
+    };
+
     private sealed record ModelPlan(
         [property: JsonPropertyName("view")] string? View,
         [property: JsonPropertyName("statuses")] string[]? Statuses,
         [property: JsonPropertyName("countOf")] string? CountOf,
+        [property: JsonPropertyName("metric")] string? Metric,
         [property: JsonPropertyName("explain")] string? Explain,
         [property: JsonPropertyName("refusal")] string? Refusal);
 

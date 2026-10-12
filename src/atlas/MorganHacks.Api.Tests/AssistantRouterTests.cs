@@ -148,8 +148,11 @@ public class AssistantRouterTests
             .Select(p => p.Name)
             .ToArray();
 
+        // Every one of these names a screen, a filter, or a reading. None of
+        // them can hold a person. Adding a field here is meant to fail this
+        // test and make somebody say which of those three it is.
         Assert.Equal(
-            new[] { "View", "Statuses", "Search", "Explain", "CountOf" }.OrderBy(n => n),
+            new[] { "View", "Statuses", "Search", "Explain", "CountOf", "Metric" }.OrderBy(n => n),
             fields.OrderBy(n => n));
     }
 
@@ -227,9 +230,99 @@ public class AssistantRouterTests
         Assert.Equal(ApplicationStatus.Accepted, Plan(question).CountOf);
     }
 
-    [Fact]
-    public void A_total_with_no_status_named_is_the_board()
+    /// <summary>
+    /// A total has nowhere to go now that D-Day is out of the set, so it is
+    /// refused rather than pointed at a screen that is empty of meaning until
+    /// the day.
+    /// </summary>
+    [Theory]
+    [InlineData("how many applicants in total")]
+    [InlineData("how many applicants overall")]
+    public void A_total_with_no_status_named_is_refused(string question)
     {
-        Assert.Equal(AssistantView.Dashboard, Plan("how many applicants in total").View);
+        var answer = WordRouter.Plan(question);
+
+        Assert.Null(answer.Plan);
+        Assert.False(string.IsNullOrWhiteSpace(answer.Refusal));
+    }
+
+    // -------------------------------------------------------- the readings ---
+
+    /// <summary>
+    /// A question about a rate is not a question about the pile it names.
+    /// "What is our acceptance rate" contains the word accepted and is not a
+    /// request for the accepted applicants, which is why the readings are
+    /// matched before the status words.
+    /// </summary>
+    [Theory]
+    [InlineData("what is our acceptance rate", AssistantMetric.AcceptanceRate)]
+    [InlineData("how selective are we", AssistantMetric.AcceptanceRate)]
+    [InlineData("what is the rsvp rate", AssistantMetric.ConfirmRate)]
+    [InlineData("what was our turnout", AssistantMetric.ShowRate)]
+    [InlineData("are applications slowing down", AssistantMetric.Pace)]
+    [InlineData("which schools are they coming from", AssistantMetric.Schools)]
+    [InlineData("what is our completion rate", AssistantMetric.CompletionRate)]
+    [InlineData("how many people drop off", AssistantMetric.CompletionRate)]
+    [InlineData("what is the decline rate", AssistantMetric.DeclineRate)]
+    [InlineData("show me the whole pipeline", AssistantMetric.Funnel)]
+    [InlineData("how much is still left to review", AssistantMetric.Outstanding)]
+    [InlineData("what was our busiest day", AssistantMetric.BusiestDay)]
+    [InlineData("what year are they in", AssistantMetric.Education)]
+    [InlineData("how many are first time hackers", AssistantMetric.Experience)]
+    [InlineData("what is the gender balance", AssistantMetric.Gender)]
+    public void A_question_about_a_rate_is_a_reading(string question, AssistantMetric expected)
+    {
+        var plan = Plan(question);
+
+        Assert.Equal(AssistantView.Analysis, plan.View);
+        Assert.Equal(expected, plan.Metric);
+        Assert.Empty(plan.Statuses);
+    }
+
+    /// <summary>
+    /// A reading carries no filter, so nothing downstream can mistake it for a
+    /// list to open.
+    /// </summary>
+    [Fact]
+    public void A_reading_does_not_also_filter_a_list()
+    {
+        var plan = Plan("what is our acceptance rate");
+
+        Assert.Empty(plan.Statuses);
+        Assert.Null(plan.CountOf);
+    }
+
+    /// <summary>
+    /// The sponsorship and website questions, which are the same question:
+    /// what can we say out loud. They route to the one bundle that carries no
+    /// personal data.
+    /// </summary>
+    [Theory]
+    [InlineData("what should i tell a sponsor")]
+    [InlineData("what goes in the sponsorship deck")]
+    [InlineData("what numbers can we put on the website")]
+    [InlineData("what is our reach")]
+    public void Asking_what_is_safe_to_publish_is_one_reading(string question)
+    {
+        var plan = Plan(question);
+
+        Assert.Equal(AssistantView.Analysis, plan.View);
+        Assert.Equal(AssistantMetric.Reach, plan.Metric);
+    }
+
+    /// <summary>
+    /// "Decline rate" contains neither a status word nor "rate" alone, and
+    /// "completion rate" must not be read as a confirmation. Specific phrases
+    /// are matched before general ones, and this is what holds that order in
+    /// place.
+    /// </summary>
+    [Theory]
+    [InlineData("what is the decline rate", AssistantMetric.DeclineRate)]
+    [InlineData("what is the completion rate", AssistantMetric.CompletionRate)]
+    [InlineData("what is the confirmation rate", AssistantMetric.ConfirmRate)]
+    public void A_more_specific_reading_wins_over_a_general_one(
+        string question, AssistantMetric expected)
+    {
+        Assert.Equal(expected, Plan(question).Metric);
     }
 }

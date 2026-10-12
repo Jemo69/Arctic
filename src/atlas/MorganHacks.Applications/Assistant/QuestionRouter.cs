@@ -32,9 +32,10 @@ public interface IQuestionRouter
 /// tests hold for any other reader that comes later.
 /// </para>
 /// <para>
-/// What it deliberately does not do is guess. A question with no status word
-/// and no counting word in it is refused rather than answered with the
-/// dashboard on the theory that something is better than nothing.
+/// What it deliberately does not do is guess. A question with no status word,
+/// no counting word and no reading in it is refused rather than answered with
+/// the nearest thing to hand, on the theory that something is better than
+/// nothing. A confident answer to a question nobody asked is worse.
 /// </para>
 /// </remarks>
 public sealed class WordRouter : IQuestionRouter
@@ -113,19 +114,21 @@ public sealed class WordRouter : IQuestionRouter
                 "applicants who confirmed and have not checked in"));
         }
 
+        if (Reading(text) is { } reading)
+        {
+            return AssistantAnswer.For(new AssistantPlan(
+                AssistantView.Analysis, [], null, reading.Said)
+            { Metric = reading.Metric });
+        }
+
         var found = Matched(text);
         var counting = Counting.Any(text.Contains);
 
         if (found.Count == 0)
         {
-            // "how many applicants" with no status named is still answerable:
-            // it is the board.
-            return counting || text.Contains("overall") || text.Contains("in total")
-                ? AssistantAnswer.For(new AssistantPlan(
-                    AssistantView.Dashboard, [], null,
-                    // COPY: needs sign-off.
-                    "the totals for this event"))
-                : AssistantAnswer.CannotPlace(asked);
+            // A total with no status named has nowhere to go: D-Day is the
+            // only screen that shows one and it is not for now.
+            return AssistantAnswer.CannotPlace(asked);
         }
 
         if (counting && found.Count == 1)
@@ -143,6 +146,93 @@ public sealed class WordRouter : IQuestionRouter
             found.Count == 1
                 ? $"applicants whose status is {Say(found[0])}"
                 : $"applicants whose status is {string.Join(" or ", found.Select(Say))}"));
+    }
+
+
+    /// <summary>
+    /// The readings, against the words people ask for them by.
+    /// </summary>
+    /// <remarks>
+    /// Checked before the status words, because "what is our acceptance rate"
+    /// contains "accepted" and is not a question about the accepted pile.
+    /// </remarks>
+    private static readonly (string[] Says, AssistantMetric Metric, string Said)[] Readings =
+    [
+        // Longest and most specific first: "decline rate" must not be read as
+        // "rate", and "completion rate" must not be read as "confirm".
+        (["acceptance rate", "accept rate", "how selective", "what percent get in",
+          "what percentage get in", "how many get in"],
+         AssistantMetric.AcceptanceRate,
+         // COPY: needs sign-off.
+         "the acceptance rate"),
+
+        (["completion rate", "finish their application", "finish the application",
+          "abandon", "drop off", "dropoff", "start but never", "started but never"],
+         AssistantMetric.CompletionRate, "how many finish what they start"),
+
+        (["decline rate", "how many say no", "how many turn us down",
+          "how many turned us down", "how many reject us"],
+         AssistantMetric.DeclineRate, "how many turn down a place"),
+
+        (["confirm rate", "confirmation rate", "rsvp rate", "how many rsvp",
+          "accept their place", "taking their place"],
+         AssistantMetric.ConfirmRate, "the confirmation rate"),
+
+        (["show rate", "turnout", "turn out rate", "attendance rate",
+          "how many actually", "no show rate"],
+         AssistantMetric.ShowRate, "the turnout rate"),
+
+        (["funnel", "whole pipeline", "the pipeline", "stage by stage",
+          "end to end", "overall picture", "how is it all going"],
+         AssistantMetric.Funnel, "the pipeline, stage by stage"),
+
+        (["still to review", "left to review", "waiting on a decision",
+          "undecided", "how much is left", "still to decide", "left to decide",
+          "outstanding", "backlog"],
+         AssistantMetric.Outstanding, "what is still waiting on a decision"),
+
+        (["busiest day", "biggest day", "peak day", "busiest",
+          "when did most", "when do most"],
+         AssistantMetric.BusiestDay, "the busiest day"),
+
+        (["pace", "pacing", "on track", "this week vs", "compared to last week",
+          "trend", "trending", "how fast are applications", "slowing", "picking up"],
+         AssistantMetric.Pace, "how applications are pacing"),
+
+        (["sponsor", "sponsorship", "for the website", "on the website",
+          "put on the site", "for the site", "public numbers", "our reach",
+          "how much reach", "pitch", "press release", "safe to publish"],
+         AssistantMetric.Reach, "the numbers that are safe to publish"),
+
+        (["which schools", "what schools", "top schools", "schools are",
+          "where are applicants coming from", "where are they coming from",
+          "most applicants from", "how many schools"],
+         AssistantMetric.Schools, "where applicants are coming from"),
+
+        (["what year", "which year", "year of study", "education level",
+          "undergrad", "graduate students", "class year", "seniors"],
+         AssistantMetric.Education, "what year applicants are in"),
+
+        (["first time", "first-time", "how experienced", "experience level",
+          "hacked before", "beginners", "newcomers", "veterans"],
+         AssistantMetric.Experience, "how much hackathon experience applicants have"),
+
+        (["gender", "men and women", "women apply", "gender split",
+          "gender balance", "gender mix"],
+         AssistantMetric.Gender, "the gender mix"),
+    ];
+
+    private static (AssistantMetric Metric, string Said)? Reading(string text)
+    {
+        foreach (var (says, metric, said) in Readings)
+        {
+            if (says.Any(text.Contains))
+            {
+                return (metric, said);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Words that turn the status after them into an exclusion.</summary>

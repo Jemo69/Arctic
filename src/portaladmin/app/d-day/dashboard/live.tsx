@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadApplicantAnalytics } from "../home-actions";
+import { loadApplicantAnalytics } from "../../home-actions";
 import {
   dateLabel, numbers, statusLabels,
   type ActivityDay, type AnalyticsResult, type AnalyticsView, type SchoolBucket,
-} from "../home-analytics";
+} from "../../home-analytics";
 import styles from "./dashboard.module.css";
 
 /**

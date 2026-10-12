@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AiMagicIcon, ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
-import { ask, type AskedPlan } from "./ask";
+import Link from "next/link";
+import { ask, type Answer, type AskedPlan } from "./ask";
 import styles from "./ask-box.module.css";
 
 /**
@@ -32,6 +33,8 @@ export function AskBox({ eventId }: { eventId?: string }) {
   const router = useRouter();
   const [question, setQuestion] = useState("");
   const [said, setSaid] = useState<string | null>(null);
+  const [counted, setCounted] = useState<{ value: number; to: string } | null>(null);
+  const [reading, setReading] = useState<Extract<Answer, { headline: string }> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -41,15 +44,47 @@ export function AskBox({ eventId }: { eventId?: string }) {
 
     setProblem(null);
     setSaid(null);
+    setCounted(null);
+    setReading(null);
 
     start(async () => {
-      const result = await ask(asked);
+      const result = await ask(asked, eventId);
 
       // Checked positively rather than by eliminating the other two: the
       // union's absent members are optional, so narrowing by what is missing
       // does not tell the compiler what is present.
       if (result.plan) {
         setSaid(result.plan.explain);
+
+        // A counting question wanted a number, so it gets one here rather
+        // than a list to count by hand. The list is still one click away --
+        // "how many are waitlisted" is very often followed by "show me" --
+        // but moving the page for a figure somebody wanted at a glance would
+        // cost them the screen they were already reading.
+        // A reading is the answer itself, so it stays on the page it was
+        // asked from. There is nowhere to send somebody for "the acceptance
+        // rate" -- no screen in the console shows one.
+        if (result.plan.view === "analysis") {
+          if (result.answer?.headline) {
+            setReading(result.answer as Extract<Answer, { headline: string }>);
+            return;
+          }
+
+          // Nothing to compute yet. Said plainly, because a blank panel reads
+          // as a broken screen and "none" reads as a finding.
+          // COPY: needs sign-off.
+          setProblem(
+            `There is not enough yet to work out ${result.plan.explain}. `
+              + "It will answer once more applications have come in.",
+          );
+          return;
+        }
+
+        if (result.plan.view === "count" && result.answer?.value !== undefined) {
+          setCounted({ value: result.answer.value, to: destination(result.plan, eventId) });
+          return;
+        }
+
         router.push(destination(result.plan, eventId));
         return;
       }
@@ -95,7 +130,44 @@ export function AskBox({ eventId }: { eventId?: string }) {
         </button>
       </form>
 
-      {said ? (
+      {reading ? (
+        <div className={styles.reading} role="status">
+          <p className={styles.readingHead}>{reading.headline}</p>
+          {reading.rows.length > 0 ? (
+            <ol className={styles.readingRows}>
+              {reading.rows.map((row) => (
+                <li key={row.label} className={styles.readingRow}>
+                  <span className={styles.readingLabel}>{row.label}</span>
+                  <span className={styles.readingCount}>
+                    {row.count.toLocaleString("en-US")}
+                    {row.share > 0 ? (
+                      <span className={styles.readingShare}>
+                        {" "}
+                        {(row.share * 100).toFixed(0)}%
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {/* The denominator, in words, because the number above means
+              nothing without it. */}
+          <p className={styles.readingBasis}>{reading.basis}</p>
+        </div>
+      ) : counted ? (
+        <p className={styles.counted} role="status">
+          {/* The figure is read off the same store the filter chips are, on
+              the server. Nothing in this component computes it, and nothing
+              in the model produced it. */}
+          <strong>{counted.value.toLocaleString("en-US")}</strong>
+          {/* COPY: needs sign-off. */}
+          <span>{said}</span>
+          <Link href={counted.to} className={styles.seeThem}>
+            See them
+          </Link>
+        </p>
+      ) : said ? (
         <p className={styles.said} role="status">
           {/* COPY: needs sign-off. */}
           Showing {said}.
@@ -119,10 +191,6 @@ export function AskBox({ eventId }: { eventId?: string }) {
  * place that displays one and can disagree with it.
  */
 function destination(plan: AskedPlan, eventId?: string): string {
-  if (plan.view === "dashboard") {
-    return eventId ? `/dashboard?eventId=${encodeURIComponent(eventId)}` : "/dashboard";
-  }
-
   const params = new URLSearchParams();
   if (eventId) params.set("event", eventId);
   if (plan.search) params.set("q", plan.search);

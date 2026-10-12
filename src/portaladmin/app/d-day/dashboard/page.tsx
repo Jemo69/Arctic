@@ -1,10 +1,17 @@
 import { readPageData } from "@/lib/page-data";
-import { Shell } from "../shell";
-import { loadApplicantAnalytics } from "../home-actions";
+import { Shell } from "../../shell";
+import { loadApplicantAnalytics } from "../../home-actions";
 import { LiveBoard } from "./live";
 
 /**
- * The screen somebody leaves up at the organizer desk.
+ * The screen somebody leaves up at the organizer desk, on the day.
+ *
+ * Named for the day rather than for the shape of it. This is where the things
+ * that only matter once doors open collect -- the live counts now, check-in
+ * and whatever the desk turns out to need beside it later -- and keeping that
+ * boundary in the name is what stops it becoming the console's front page by
+ * accretion. Before the day there is nothing here worth looking at, and
+ * nothing should send anybody to it.
  *
  * Deliberately not the home screen. Home is read by one person sitting down
  * to work and answers "what should I do next"; this is read from across a
