@@ -68,7 +68,9 @@ capped measure, for readers who find the default face hard going. Behind
 on Vercel overrides it per environment.
 
 The toggle is in the portal bar. The choice lives in the `arctic_reading_mode`
-cookie, read in the root layout so the first paint is already correct; the OS
+cookie, read in the portal layout so the first paint is already correct — the
+root layout cannot read it without costing `/` its prerender, so the
+`data-reading` attribute lands on the portal frame rather than `<html>`. The OS
 preference `prefers-contrast: more` is the fallback for a reader who has never
 touched the toggle.
 

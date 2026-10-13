@@ -1,12 +1,6 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import { Inter, Instrument_Serif } from "next/font/google";
 import localFont from "next/font/local";
-import { READING_MODE, isOn } from "@/lib/features";
-import {
-  READING_MODE_COOKIE,
-  initialReadingMode,
-} from "../../../libs/ui/reading-mode";
 import { siteConfig } from "@/site.config";
 
 // No stylesheet here on purpose. This app serves two things with nothing in
@@ -91,16 +85,16 @@ export const metadata: Metadata = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // Reading mode, decided on the server so the very first byte already carries
-  // it. `undefined` means the cookie was absent and the client's OS preference
-  // decides after mount — see libs/ui/reading-mode.ts for why those two cases
-  // are deliberately different.
-  const reading = isOn(READING_MODE) ? initialReadingMode((await cookies()).get(READING_MODE_COOKIE)?.value) : undefined;
-
+  // No reading-mode resolution here on purpose. This layout wraps the public
+  // page as well as the portal, and calling cookies() in it would pull the
+  // prerendered `/` into dynamic rendering the moment the flag is on. The
+  // cookie is read in app/portal/layout.tsx instead, which applies
+  // `data-reading` to the portal frame — reading-mode.css keys off any
+  // ancestor carrying the attribute, so the treatment reaches everything under
+  // that frame and `/` keeps its prerender and never sees the attribute.
   return (
     <html
       lang="en"
-      data-reading={reading ? "on" : undefined}
       // Pinned, the same way the console pins it, and for the same reason: the
       // MorganHacks mark is drawn for a light ground. Following the reader's
       // system preference meant an applicant on a dark laptop and an organizer

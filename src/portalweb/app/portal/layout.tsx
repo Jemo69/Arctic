@@ -43,8 +43,21 @@ export default async function PortalLayout({
     redirect("/");
   }
 
+  // Reading mode, decided on the server so the very first byte already carries
+  // it. `undefined` means the cookie was absent and the client's OS preference
+  // decides after mount — see libs/ui/reading-mode.ts for why those two cases
+  // are deliberately different.
+  //
+  // Read here rather than in the root layout: that layout also wraps the
+  // public page, and a cookies() call in it would cost `/` its prerender the
+  // moment the flag is on. The attribute therefore goes on the portal frame
+  // rather than <html> — every rule in libs/ui/reading-mode.css keys off any
+  // ancestor carrying `[data-reading="on"]`, and this frame is the ancestor of
+  // everything the mode applies to.
+  const reading = isOn(READING_MODE) ? initialReadingMode((await cookies()).get(READING_MODE_COOKIE)?.value) : undefined;
+
   return (
-    <div className="portal">
+    <div className="portal" data-reading={reading ? "on" : undefined}>
       <header className="portal__bar">
         {/*
           A plain anchor rather than next/link. It leaves the portal for the
@@ -80,16 +93,12 @@ export default async function PortalLayout({
           a feature that is off is meant to be indistinguishable from one that
           was never built. See docs/feature-flags.md.
 
-          The initial value comes from the cookie the root layout already read,
-          so the button's own state is correct on arrival rather than flipping a
-          moment after hydration.
+          The initial value comes from the cookie this layout already read for
+          the frame's `data-reading` attribute, so the button's own state is
+          correct on arrival rather than flipping a moment after hydration.
         */}
         {isOn(READING_MODE) && (
-          <ReadingToggle
-            initial={initialReadingMode(
-              (await cookies()).get(READING_MODE_COOKIE)?.value,
-            )}
-          />
+          <ReadingToggle initial={reading} />
         )}
       </header>
 

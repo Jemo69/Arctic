@@ -34,6 +34,11 @@
   display: flex;
   justify-content: flex-end;
   margin-bottom: 12px;
+  /* A full row of the split layout's two-column grid, so the toggle never
+     steals a column from the intro or the form. Without this, auto-placement
+     starts at the toggle and pushes the entire form into the narrow left
+     column. Inert in the cards layout, which is display: block. */
+  grid-column: 1 / -1;
 }
 
 .surface:where(:has(:global(#mlh-trust-badge))) {
@@ -368,6 +373,11 @@
 .cards[data-color-scheme="light"] { --paper: color-mix(in srgb, var(--form-ink) 5%, var(--form-background)); }
 .cards[data-color-scheme="dark"] { --paper: color-mix(in srgb, var(--form-ink) 6%, var(--form-background)); }
 .cards[data-background="#000000"] { --paper: #1f1f1f; }
+/* Reading mode: the card chrome font yields to the reading face, so every rule
+   below naming var(--card-ui-font) follows the mode without being edited.
+   --reading-body falls back to the form's own face when the mode is off, which
+   this rule does not match anyway. */
+[data-reading="on"] .cards { --card-ui-font: var(--reading-body); }
 .cards, .cards:has(:global(.page)) {
   height: auto;
   min-height: 100dvh;

@@ -1499,11 +1499,28 @@ button[type="submit"]:disabled {
   --step0: calc(var(--form-font-size) + 2px);
   min-height: calc(100dvh - 54px);
   background: var(--form-background);
-  font-family: var(--form-font);
   font-size: var(--form-font-size);
 }
 
-.formTheme .page, .formTheme input, .formTheme textarea, .formTheme select, .formTheme button, .formTheme .step-of {
+/*
+ * The form's own face — and the reading face's way in.
+ *
+ * A font-family stated directly on this element beats whatever it inherits,
+ * and globals.css loads after libs/ui/reading-mode.css, so declared
+ * unconditionally here it would keep OpenDyslexic off this page even with
+ * reading mode on. The :not() hands the subtree back to the reading rules when
+ * the mode is on and matches exactly what matched before when it is off.
+ */
+.formTheme:not([data-reading="on"] *) {
+  font-family: var(--form-font);
+}
+
+.formTheme:not([data-reading="on"] *) .page,
+.formTheme:not([data-reading="on"] *) input,
+.formTheme:not([data-reading="on"] *) textarea,
+.formTheme:not([data-reading="on"] *) select,
+.formTheme:not([data-reading="on"] *) button,
+.formTheme:not([data-reading="on"] *) .step-of {
   font-family: var(--form-font);
 }
 

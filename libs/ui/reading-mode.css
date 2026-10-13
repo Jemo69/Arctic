@@ -7,9 +7,11 @@
  * same size.
  *
  * Everything lives inside `[data-reading="on"]`. That attribute is written on
- * `<html>` and only when the flag is on, so with the flag off these rules never
- * match a single element — the feature is absent from the page rather than
- * present and inert. See docs/feature-flags.md.
+ * an ancestor of the content — `<html>` in the console and forms apps, the
+ * portal frame in portalweb, where calling cookies() in the root layout would
+ * cost the public page its prerender — and only when the flag is on, so with
+ * the flag off these rules never match a single element: the feature is absent
+ * from the page rather than present and inert. See docs/feature-flags.md.
  *
  * The typeface is OpenDyslexic, licensed under the SIL Open Font License 1.1.
  * The OFL permits web distribution and requires the notice to travel with the
