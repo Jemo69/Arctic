@@ -140,6 +140,14 @@ limit rather than an absent one.
 @secure()
 param proxySecret string = ''
 
+@description('''
+The key the assistant's question reader uses. Empty leaves the word table in
+charge, which answers the common phrasings without a network call -- so an
+absent key is a quieter assistant, never a broken one.
+''')
+@secure()
+param openAiApiKey string = ''
+
 @description('Whether the applicant portal is served. Empty leaves features.json to decide.')
 param enableHackerPortalFeature string = ''
 
@@ -234,6 +242,56 @@ var dbSecret = {
 // off until a DSN is set" has to mean the secret is absent rather than blank.
 // Otherwise the thing that lets this run with no accounts is the thing that
 // stops it deploying.
+// The proxy secret, as a secret rather than a value.
+//
+// It was wired as a plain env entry while carrying @secure(), which meant
+// anybody holding Reader on the resource group could read it back out of
+// `az containerapp show` without the list-secrets permission that name
+// implies. The value decides whether harbor believes a forwarded client
+// address, so reading it is enough to forge one and walk past the per-IP
+// limiter on sign-in.
+//
+// Absent rather than blank when unset, for the reason the Sentry block below
+// gives: Container Apps refuses a secret with an empty value. ClientAddress
+// treats a missing secret and an empty one the same way -- IsNullOrWhiteSpace,
+// then trust nothing -- so dropping the variable entirely keeps the existing
+// fail-closed behaviour rather than changing it.
+var hasProxySecret = !empty(proxySecret)
+
+var proxySecrets = hasProxySecret ? [
+  {
+    name: 'proxy-secret'
+    value: proxySecret
+  }
+] : []
+
+var proxyEnv = hasProxySecret ? [
+  { name: 'Network__ProxySecret', secretRef: 'proxy-secret' }
+] : []
+
+// The assistant's provider key, as a secret rather than a value.
+//
+// Same treatment as the proxy secret above and for the same reason: a @secure()
+// param wired as a plain env entry is readable out of `az containerapp show`
+// by anybody holding Reader, without the list-secrets permission that name
+// implies. This one is billable, so reading it is spending somebody's money.
+//
+// Absent rather than blank when unset, because Container Apps refuses a secret
+// with an empty value -- and atlas reads a missing key the same way it reads
+// an empty one, by keeping the word table.
+var hasOpenAi = !empty(openAiApiKey)
+
+var openAiSecrets = hasOpenAi ? [
+  {
+    name: 'openai-api-key'
+    value: openAiApiKey
+  }
+] : []
+
+var openAiEnv = hasOpenAi ? [
+  { name: 'OpenAI__ApiKey', secretRef: 'openai-api-key' }
+] : []
+
 var hasSentry = !empty(sentryDsn)
 
 var sentrySecrets = hasSentry ? [
@@ -355,7 +413,7 @@ resource atlas 'Microsoft.App/containerApps@2024-03-01' = {
         transport: 'auto'
       }
       registries: registryConfig
-      secrets: concat([dbSecret], sentrySecrets, googleSecrets)
+      secrets: concat([dbSecret], sentrySecrets, googleSecrets, proxySecrets, openAiSecrets)
     }
     template: {
       containers: [
@@ -377,8 +435,7 @@ resource atlas 'Microsoft.App/containerApps@2024-03-01' = {
             // blip that restarts every replica turns a recoverable problem
             // into an outage.
             { name: 'ASPNETCORE_ENVIRONMENT', value: environmentName == 'prod' ? 'Production' : 'Staging' }
-            { name: 'Network__ProxySecret', value: proxySecret }
-          ], sentryEnv, googleEnv, portalEnv, resumeEnv, featureEnv)
+          ], sentryEnv, googleEnv, portalEnv, resumeEnv, featureEnv, proxyEnv, openAiEnv)
           probes: [
             {
               type: 'Liveness'
@@ -449,7 +506,7 @@ resource harbor 'Microsoft.App/containerApps@2024-03-01' = {
         transport: 'auto'
       }
       registries: registryConfig
-      secrets: sentrySecrets
+      secrets: concat(sentrySecrets, proxySecrets)
     }
     template: {
       containers: [
@@ -461,7 +518,6 @@ resource harbor 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ASPNETCORE_URLS', value: 'http://+:8080' }
             { name: 'ReverseProxy__Clusters__atlas__Destinations__primary__Address', value: 'https://${atlas.properties.configuration.ingress.fqdn}/' }
             { name: 'ASPNETCORE_ENVIRONMENT', value: environmentName == 'prod' ? 'Production' : 'Staging' }
-            { name: 'Network__ProxySecret', value: proxySecret }
             // Exactly one proxy sits in front of harbor: the Container Apps
             // ingress, which appends the real client to X-Forwarded-For. One
             // means we take that entry and stop.
@@ -472,7 +528,7 @@ resource harbor 'Microsoft.App/containerApps@2024-03-01' = {
             // against staging, where a forged header became the client IP and
             // made every per-IP rate limit trivially bypassable.
             { name: 'Network__ForwardLimit', value: '1' }
-          ], sentryEnv)
+          ], sentryEnv, proxyEnv)
           probes: [
             {
               type: 'Liveness'

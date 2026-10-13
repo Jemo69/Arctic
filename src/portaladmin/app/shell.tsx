@@ -1,8 +1,9 @@
 import { currentPerson } from "@/lib/api";
+import { CHECK_IN_DESK, READING_MODE, isOn } from "@/lib/features";
 import { sectionsFor } from "./sections";
 import { SidebarLayout, SidebarPage } from "./sidebar";
+import { ChatPanel } from "@/components/assistant/chat-panel";
 import { displayName } from "@/lib/person-profile";
-import { READING_MODE, isOn } from "@/lib/features";
 import { READING_MODE_COOKIE, initialReadingMode } from "../../../libs/ui/reading-mode";
 import { cookies } from "next/headers";
 
@@ -34,7 +35,9 @@ async function sidebarProps({ fullName, email, templateCount }: SidebarOptions =
     sections: sectionsFor(
       person?.permissions ?? new Set<string>(),
       templateCount === undefined ? {} : { "/templates": templateCount },
-    ),
+      // A tab that only ever refuses teaches its reader that the console
+      // is broken, so the desk stays out of the nav until its flag is on.
+    ).filter((section) => section.href !== "/check-in" || isOn(CHECK_IN_DESK)),
     identity: {
       label: displayName(person?.fullName ?? fullName, address),
       email: address,
@@ -47,6 +50,9 @@ export async function ConsoleShell({ children }: { children: React.ReactNode }) 
   return (
     <SidebarLayout {...await sidebarProps()} reading={await readingMode()}>
       {children}
+      {/* One mount for the whole console, so a thread survives moving between
+          screens. It fetches nothing until somebody opens it. */}
+      <ChatPanel />
     </SidebarLayout>
   );
 }
@@ -69,6 +75,7 @@ export async function Shell({
   return (
     <SidebarPage {...await sidebarProps({ fullName, email, templateCount })}>
       {children}
+      <ChatPanel />
     </SidebarPage>
   );
 }

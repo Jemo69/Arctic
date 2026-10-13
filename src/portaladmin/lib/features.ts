@@ -19,6 +19,12 @@ import defaults from "@/features.json";
 export const HACKER_PORTAL = "enable_hacker_portal_feature";
 
 /**
+ * The check-in desk. Off hides it from the nav and refuses direct visits.
+ * Overridden with ENABLE_CHECK_IN_DESK=true; still needs checkin.scan to scan.
+ */
+export const CHECK_IN_DESK = "enable_check_in_desk";
+
+/**
  * Reading mode: OpenDyslexic plus the spacing that makes it work.
  *
  * Off means the toggle does not render and nothing carries `data-reading`. See

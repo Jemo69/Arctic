@@ -70,7 +70,7 @@ no cloud account at all.
 ## 1. Start the whole thing
 
 ```bash
-git clone https://github.com/MorganHacks/Arctic.git
+git clone https://github.com/Morgan-Hacks/Arctic.git
 cd Arctic
 deploy/local/dev.sh you@morgan.edu
 ```
@@ -527,7 +527,7 @@ you decided.
 Environment **variables** (set per environment — Staging and Production have
 their own): `SUPER_ADMIN_EMAIL`, `AWS_REGION`, `GOOGLE_CLIENT_ID`,
 `GOOGLE_REDIRECT_URI`, `PUBLIC_BASE_URL`, `FORMS_BASE_URL`, `CONSOLE_BASE_URL`,
-`WARM_REPLICAS`, `ENABLE_HACKER_PORTAL_FEATURE`.
+`WARM_REPLICAS`, `ENABLE_HACKER_PORTAL_FEATURE`, `ENABLE_CHECK_IN_DESK`.
 
 Staging has all of these. **Production has none of the secrets**, which is the
 one reason a production deploy would fail today — there is no production
@@ -814,3 +814,33 @@ means mail is not arriving. Every service is up, every dashboard is green, and
 nobody can log in. No error rate catches it, because nothing is erroring. Both
 are emitted as an `event` property on a log line, so an aggregator can count
 them without a metrics stack to run.
+
+## Mock applicants for organizer simulations
+
+### Local testing
+
+After starting the local stack, run `deploy/local/seed-hackers.sh --apply` from
+another terminal at the repository root. This adds 50 fictional applicants to a
+separate **MOCK — Organizer simulation** event in the local organizer console.
+Run without `--apply` for a preview. Reruns preserve existing applicants and your
+review changes.
+
+### Shared staging testing
+
+Once the workflow is merged into `main`, open GitHub → **Actions → Seed staging
+applicants → Run workflow**. Select `main`, choose a total count (50 by default),
+and check **Create applicants** to write the data. Leave it unchecked for a preview
+that validates configuration without connecting to the database.
+
+After the run succeeds, sign in at
+[admin-stg.morganhacks.com](https://admin-stg.morganhacks.com/applicants?event=028c6934-b837-44e4-9b40-076083d126ae)
+and select **MOCK — Organizer simulation**. The team shares this staging dataset;
+local seed data is not copied there. Existing staging organizer access is required.
+
+Merging does not automatically seed staging. This manual action uses the existing
+Staging environment's Azure credentials and database secret, requires the deployed
+staging schema, and blocks production. Mock-address suppressions prevent real email
+delivery during reviews. Reruns preserve notes and decisions.
+
+See [the seed utility guide](../src/atlas/MorganHacks.Seed/README.md) for prerequisites,
+counts, safeguards, and tests.

@@ -29,13 +29,13 @@ public class StatusTransitionTests
     }
 
     [Fact]
-    public void A_rejected_application_is_terminal()
+    public void A_rejected_application_can_only_be_reopened_for_review()
     {
-        // Reversing a rejection is a new application, not an edit. The history
-        // has to keep saying what actually happened.
+        Assert.Equal([ApplicationStatus.UnderReview], StatusTransition.From(ApplicationStatus.Rejected));
         foreach (var target in Enum.GetValues<ApplicationStatus>())
         {
-            Assert.False(StatusTransition.IsAllowed(ApplicationStatus.Rejected, target));
+            Assert.Equal(target == ApplicationStatus.UnderReview,
+                StatusTransition.IsAllowed(ApplicationStatus.Rejected, target));
         }
     }
 

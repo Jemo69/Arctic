@@ -556,6 +556,111 @@ public class ApplicantEndpointTests(ApplicationsDatabase db)
         Assert.Equal(JsonValueKind.Null, body.GetProperty("resume").ValueKind);
     }
 
+    [Fact]
+    public async Task Reopening_preserves_the_rejection_and_records_the_new_actor_and_reason()
+    {
+        var eventId = await db.AddEventAsync();
+        var id = await SeedAsync(eventId, status: "under_review");
+        var rejecter = await Registration();
+        var admin = await Registration();
+        var cookie = await SignIn(admin);
+        (await Decide(id, await SignIn(rejecter), "rejected", "Accidental rejection."))
+            .EnsureSuccessStatusCode();
+        var before = await Applications.HistoryOfAsync(id);
+        Assert.NotNull((await db.DecisionOf(id)).DecidedAt);
+        var detail = await Json($"/admin/applicants/{id}", cookie);
+        Assert.Equal("under_review", Assert.Single(detail.GetProperty("allowedNext").EnumerateArray()).GetString());
+
+        (await Decide(id, cookie, "under_review", "Reopening an accidental rejection."))
+            .EnsureSuccessStatusCode();
+
+        Assert.Equal(ApplicationStatus.UnderReview, await Applications.StatusOfAsync(id));
+        var history = await Applications.HistoryOfAsync(id);
+        Assert.Equal(before.Count + 1, history.Count);
+        Assert.Equal(before, history.Take(before.Count));
+        Assert.Equal(ApplicationStatus.Rejected, history[^1].From);
+        Assert.Equal(ApplicationStatus.UnderReview, history[^1].To);
+        Assert.Equal(admin, history[^1].ActorId);
+        Assert.Equal("Reopening an accidental rejection.", history[^1].Reason);
+        Assert.Null(history[^1].BatchId);
+        var (decidedAt, decidedBy) = await db.DecisionOf(id);
+        Assert.Null(decidedAt);
+        Assert.Null(decidedBy);
+
+        Assert.Equal(HttpStatusCode.Conflict, (await Decide(id, cookie, "under_review")).StatusCode);
+        Assert.Equal(history.Count, (await Applications.HistoryOfAsync(id)).Count);
+        (await Decide(id, cookie, "accepted")).EnsureSuccessStatusCode();
+        Assert.NotNull((await db.DecisionOf(id)).DecidedAt);
+        Assert.Equal(admin, (await db.DecisionOf(id)).DecidedBy);
+    }
+
+    [Theory]
+    [InlineData("logistics")]
+    [InlineData("comms")]
+    [InlineData(null)]
+    public async Task Reopening_requires_decision_permission(string? team)
+    {
+        var id = await SeedAsync(await db.AddEventAsync(), status: "rejected");
+        var person = await db.AddPersonAsync(Unique("no-decision"));
+        if (team is not null) await db.AddToTeamAsync(person, team);
+        var before = await Applications.HistoryOfAsync(id);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await Decide(id, await SignIn(person), "under_review")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await Client().PostAsJsonAsync($"/admin/applicants/{id}/status", new { status = "under_review" })).StatusCode);
+        Assert.Equal(ApplicationStatus.Rejected, await Applications.StatusOfAsync(id));
+        Assert.Equal(before, await Applications.HistoryOfAsync(id));
+    }
+
+    [Fact]
+    public async Task Removing_decision_permission_after_loading_the_page_prevents_reopening()
+    {
+        var id = await SeedAsync(await db.AddEventAsync(), status: "rejected");
+        var admin = await Registration();
+        var cookie = await SignIn(admin);
+        (await Client().SendAsync(Get($"/admin/applicants/{id}", cookie))).EnsureSuccessStatusCode();
+        await using (var cmd = db.DataSource.CreateCommand(
+            "DELETE FROM identity.team_members WHERE person_id = @person"))
+        {
+            cmd.Parameters.AddWithValue("person", admin);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        var before = await db.HistoryCountAsync(id);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Decide(id, cookie, "under_review")).StatusCode);
+        Assert.Equal(ApplicationStatus.Rejected, await Applications.StatusOfAsync(id));
+        Assert.Equal(before, await db.HistoryCountAsync(id));
+    }
+
+    [Theory]
+    [InlineData("accepted")]
+    [InlineData("confirmed")]
+    [InlineData("declined")]
+    [InlineData("withdrawn")]
+    [InlineData("checked_in")]
+    [InlineData("expired")]
+    [InlineData("waitlisted")]
+    public async Task Reopening_does_not_allow_other_decisions_to_be_reversed(string status)
+    {
+        var (eventId, cookie) = await ReadyAsync();
+        var id = await SeedAsync(eventId, status: status);
+        var before = await Applications.HistoryOfAsync(id);
+        Assert.Equal(HttpStatusCode.Conflict, (await Decide(id, cookie, "under_review")).StatusCode);
+        Assert.Equal(status, (await Applications.StatusOfAsync(id))!.Value.ToWire());
+        Assert.Equal(before, await Applications.HistoryOfAsync(id));
+    }
+
+    [Fact]
+    public async Task Concurrent_reopens_record_only_one_change()
+    {
+        var (eventId, cookie) = await ReadyAsync();
+        var id = await SeedAsync(eventId, status: "rejected");
+        var before = await db.HistoryCountAsync(id);
+        var results = await Task.WhenAll(Decide(id, cookie, "under_review"), Decide(id, cookie, "under_review"));
+        Assert.Single(results, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.Single(results, r => r.StatusCode == HttpStatusCode.Conflict);
+        Assert.Equal(before + 1, await db.HistoryCountAsync(id));
+    }
+
     // -------------------------------------------------------------- fixtures ---
 
     /// <summary>

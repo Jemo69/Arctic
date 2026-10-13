@@ -109,6 +109,9 @@ rate limit rather than none.
 @secure()
 param proxySecret string = ''
 
+@secure()
+param openAiApiKey string = ''
+
 @description('''
 Replicas of the web-facing services kept warm rather than asleep.
 
@@ -157,7 +160,7 @@ var commonTags = {
   workload: 'mh'
   environment: environmentName
   managedBy: 'bicep'
-  repository: 'MorganHacks/Arctic'
+  repository: 'Morgan-Hacks/Arctic'
 }
 
 // The registry outlives any one environment, so it is not tagged as belonging
@@ -166,7 +169,7 @@ var sharedTags = {
   workload: 'mh'
   environment: 'shared'
   managedBy: 'bicep'
-  repository: 'MorganHacks/Arctic'
+  repository: 'Morgan-Hacks/Arctic'
 }
 
 resource sharedGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -258,6 +261,7 @@ module apps 'modules/apps.bicep' = if (deployApps) {
     larkWarmReplicas: larkWarmReplicas
     enableHackerPortalFeature: enableHackerPortalFeature
     proxySecret: proxySecret
+    openAiApiKey: openAiApiKey
     pullIdentityId: pullIdentity.outputs.id
     pullIdentityClientId: pullIdentity.outputs.clientId
     tags: commonTags

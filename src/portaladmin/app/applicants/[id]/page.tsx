@@ -143,6 +143,7 @@ export default async function OneApplicant({
                 */}
                 <Decision
                   id={applicant.id}
+                  status={applicant.status}
                   allowedNext={applicant.allowedNext}
                   canDecide={person.permissions.has("applications.decide")}
                 />

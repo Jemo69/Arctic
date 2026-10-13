@@ -31,10 +31,12 @@ import type { Status } from "./types";
  */
 export function Decision({
   id,
+  status,
   allowedNext,
   canDecide,
 }: {
   id: string;
+  status: Status;
   allowedNext: Status[];
 
   /**
@@ -49,6 +51,7 @@ export function Decision({
   canDecide: boolean;
 }) {
   const [state, submit, pending] = useActionState(changeStatus, {});
+  const reopening = status === "rejected" && allowedNext.includes("under_review");
   const needsReview = allowedNext.includes("under_review") && !allowedNext.includes("accepted");
 
   if (!canDecide) {
@@ -72,24 +75,34 @@ export function Decision({
     <form action={submit} className={styles.decide}>
       <input type="hidden" name="id" value={id} />
 
-      <div>
-        <label htmlFor="status">Update status</label>
-        <Select id="status" name="status" defaultValue="" required disabled={pending} aria-describedby={needsReview ? "status-help" : undefined}>
-          <option value="" disabled>
-            Choose a status
-          </option>
-          {allowedNext.map((status) => (
-            <option key={status} value={status}>
-              {label(status)}
-            </option>
-          ))}
-        </Select>
-        {needsReview ? (
-          <p id="status-help" className={styles.statusHelp}>
-            Move to Under review first. You can then accept, waitlist, or reject this application.
+      {reopening ? (
+        <div>
+          <input type="hidden" name="status" value="under_review" />
+          <p className={styles.statusHelp}>
+            Reopen this application for review. The rejection stays in its history;
+            you can make a new decision after reopening.
           </p>
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <div>
+          <label htmlFor="status">Update status</label>
+          <Select id="status" name="status" defaultValue="" required disabled={pending} aria-describedby={needsReview ? "status-help" : undefined}>
+            <option value="" disabled>
+              Choose a status
+            </option>
+            {allowedNext.map((status) => (
+              <option key={status} value={status}>
+                {label(status)}
+              </option>
+            ))}
+          </Select>
+          {needsReview ? (
+            <p id="status-help" className={styles.statusHelp}>
+              Move to Under review first. You can then accept, waitlist, or reject this application.
+            </p>
+          ) : null}
+        </div>
+      )}
 
       <div>
         <label htmlFor="reason">Reason <span className={styles.optional}>(optional)</span></label>
@@ -98,7 +111,7 @@ export function Decision({
 
       <div>
         <button type="submit" className={`button primary ${styles.decisionButton}`} disabled={pending}>
-          {pending ? "Saving…" : "Change status"}
+          {pending ? "Saving…" : reopening ? "Reopen application" : "Change status"}
         </button>
       </div>
 
