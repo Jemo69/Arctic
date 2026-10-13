@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { usePathname } from "next/navigation";
+import { Suspense, useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   AiMagicIcon,
   ArrowRight02Icon,
@@ -10,16 +10,18 @@ import {
   Delete02Icon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/ui/icon";
+import { Select } from "@/components/ui/select";
 import {
+  events as readEvents,
   forget,
-  here,
   say,
   thread as readThread,
   threads as readThreads,
+  type EventChoice,
   type ThreadSummary,
   type Turn,
 } from "./chat";
-import { screenOf } from "./screen";
+import { eventOf, screenOf } from "./screen";
 import styles from "./chat-panel.module.css";
 
 /**
@@ -54,7 +56,15 @@ export function ChatPanel() {
         </button>
       )}
 
-      {open ? <Panel onClose={() => setOpen(false)} /> : null}
+      {/* The boundary lives here rather than at the mount sites, because the
+          hook that needs one is inside Panel and a boundary two files away is
+          one somebody deletes. Nothing to fall back to: the panel is already
+          empty until its first read answers. */}
+      {open ? (
+        <Suspense fallback={null}>
+          <Panel onClose={() => setOpen(false)} />
+        </Suspense>
+      ) : null}
     </>
   );
 }
@@ -65,6 +75,7 @@ function Panel({ onClose }: { onClose: () => void }) {
   const [history, setHistory] = useState<ThreadSummary[]>([]);
   const [keptForDays, setKeptForDays] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
+  const [choices, setChoices] = useState<EventChoice[]>([]);
   const [eventId, setEventId] = useState<string | null>(null);
   const [eventName, setEventName] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -79,15 +90,29 @@ function Panel({ onClose }: { onClose: () => void }) {
   // the second question is about the screen they are on now.
   const screen = screenOf(usePathname());
 
+  // What the page has selected, used only as the opening suggestion. The
+  // choice itself is made in the panel and then held for the conversation:
+  // following the URL instead would change what a thread was about halfway
+  // through it, and "and by school?" answered against a different cohort is a
+  // wrong answer with nothing on it to say so.
+  const suggested = eventOf(useSearchParams());
+
   useEffect(() => {
     let live = true;
 
     (async () => {
-      const [where, listed] = await Promise.all([here(), readThreads()]);
+      const [known, listed] = await Promise.all([readEvents(), readThreads()]);
       if (!live) return;
 
-      setEventId(where.eventId);
-      setEventName(where.name);
+      // The page's event when it names one we know, and the console's own
+      // default otherwise. Either way it is shown before anything is asked and
+      // can be changed, so nothing is decided on somebody's behalf in silence.
+      const opening =
+        known.events.find((one) => one.id === suggested) ?? known.chosen ?? null;
+
+      setChoices(known.events);
+      setEventId(opening?.id ?? null);
+      setEventName(opening?.name ?? null);
       setHistory(listed.threads);
       setKeptForDays(listed.keptForDays);
       setReady(true);
@@ -96,7 +121,22 @@ function Panel({ onClose }: { onClose: () => void }) {
     return () => {
       live = false;
     };
+    // Once, when the panel opens. The suggestion is read at that moment and
+    // not followed afterwards -- see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Whether the event is still open to be changed.
+  //
+  // Until the first question, because that is when the thread is created and
+  // the event written onto it. After that the conversation is about that
+  // cohort and a picker would be offering something it cannot do.
+  const choosing = turns.length === 0 && !threadId;
+
+  function choose(id: string) {
+    setEventId(id);
+    setEventName(choices.find((one) => one.id === id)?.name ?? null);
+  }
 
   // Follows the conversation down as it grows, including while an answer is
   // being waited on, so the "thinking" line is what you are looking at.
@@ -130,6 +170,14 @@ function Panel({ onClose }: { onClose: () => void }) {
       }
 
       setThreadId(said.threadId);
+
+      // What the API says it answered about, which is the figure's one
+      // unstated premise. They agree in every ordinary case; this is here for
+      // the case where they do not.
+      if (said.eventName) {
+        setEventName(said.eventName);
+      }
+
       setTurns((before) => [
         ...before,
         {
@@ -150,6 +198,17 @@ function Panel({ onClose }: { onClose: () => void }) {
     setTurns(found.turns);
     setShowHistory(false);
     setProblem(null);
+
+    // The thread's event, not whatever was picked last. Reopening Monday's
+    // questions about last cycle and asking "and by school?" has to answer
+    // about last cycle -- the alternative is a follow-up that silently changes
+    // cohort between one turn and the next.
+    if (found.eventId && found.eventId !== eventId) {
+      setEventId(found.eventId);
+      setEventName(
+        choices.find((one) => one.id === found.eventId)?.name ?? null,
+      );
+    }
   }
 
   async function drop(id: string) {
@@ -221,7 +280,19 @@ function Panel({ onClose }: { onClose: () => void }) {
                       className={styles.thread}
                       onClick={() => open(one.id)}
                     >
-                      {one.title}
+                      <span className={styles.threadTitle}>{one.title}</span>
+
+                      {/* Which cohort it was about. Worth the line now that a
+                          conversation is pinned to an event: two threads
+                          titled "how many confirmed" are the same question
+                          about different years, and the title alone cannot
+                          tell them apart. */}
+                      {choices.length > 1 ? (
+                        <span className={styles.threadEvent}>
+                          {choices.find((it) => it.id === one.eventId)?.name ??
+                            "Event since removed"}
+                        </span>
+                      ) : null}
                     </button>
                     <button
                       type="button"
@@ -246,7 +317,14 @@ function Panel({ onClose }: { onClose: () => void }) {
       ) : null}
 
       <div className={styles.conversation}>
-        {turns.length === 0 && !sending ? <Opening /> : null}
+        {turns.length === 0 && !sending ? (
+          <Opening
+            choosing={choosing}
+            choices={choices}
+            eventId={eventId}
+            onChoose={choose}
+          />
+        ) : null}
 
         {turns.map((turn, at) => (
           <div
@@ -320,9 +398,46 @@ function Panel({ onClose }: { onClose: () => void }) {
  * behind this can actually answer. An empty box invites "who should we
  * accept", which is the one thing it refuses.
  */
-function Opening() {
+/**
+ * What the panel says before anything has been asked.
+ *
+ * The event is picked here rather than in the header, because it is the first
+ * decision rather than a setting: every figure that follows is about that
+ * cohort, and the answer will not say which one unless it was asked about the
+ * right one. Chosen once and then held — the header carries it afterwards.
+ */
+function Opening({
+  choosing,
+  choices,
+  eventId,
+  onChoose,
+}: {
+  choosing: boolean;
+  choices: EventChoice[];
+  eventId: string | null;
+  onChoose: (id: string) => void;
+}) {
   return (
     <div className={styles.opening}>
+      {/* Only with something to choose between. One event is not a decision,
+          and the header already names it. */}
+      {choosing && choices.length > 1 ? (
+        <label className={styles.pick}>
+          <span>Asking about</span>
+          <Select
+            aria-label="Event"
+            value={eventId ?? ""}
+            onChange={(e) => onChoose(e.target.value)}
+          >
+            {choices.map((one) => (
+              <option key={one.id} value={one.id}>
+                {one.name}
+              </option>
+            ))}
+          </Select>
+        </label>
+      ) : null}
+
       <p className={styles.note}>
         Ask about your applicants, the form, the funnel, the mail, or what is on
         the shelf. Follow-ups work — ask “and by school?” after anything.

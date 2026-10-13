@@ -44,8 +44,20 @@ export type ThreadDetail = {
 };
 
 export type Said =
-  | { threadId: string; answer: string; basis: string[]; error?: never }
-  | { threadId?: never; answer?: never; basis?: never; error: string };
+  | {
+      threadId: string;
+      answer: string;
+      basis: string[];
+      eventName: string;
+      error?: never;
+    }
+  | {
+      threadId?: never;
+      answer?: never;
+      basis?: never;
+      eventName?: never;
+      error: string;
+    };
 
 /** How long to wait. The agent may make several reads before it answers. */
 const PATIENCE = 60000;
@@ -90,7 +102,13 @@ export async function say(
     return { error: refused };
   }
 
-  let body: { threadId?: string; answer?: string; basis?: string[]; error?: string };
+  let body: {
+    threadId?: string;
+    answer?: string;
+    basis?: string[];
+    eventName?: string;
+    error?: string;
+  };
   try {
     body = await response.json();
   } catch {
@@ -102,7 +120,16 @@ export async function say(
   }
 
   return body.threadId && body.answer
-    ? { threadId: body.threadId, answer: body.answer, basis: body.basis ?? [] }
+    ? {
+        threadId: body.threadId,
+        answer: body.answer,
+        basis: body.basis ?? [],
+
+        // Which event the API actually answered about, rather than the one
+        // this side believed it had asked about. They should be the same; the
+        // whole reason to carry it is the case where they are not.
+        eventName: body.eventName ?? "",
+      }
     : { error: "That answer came back empty." };
 }
 
@@ -149,34 +176,49 @@ export async function forget(id: string): Promise<void> {
   }
 }
 
-export type Here = { eventId: string | null; name: string | null };
+export type EventChoice = { id: string; name: string };
+
+/** The events somebody may ask about, and the one the console would default to. */
+export type Events = { events: EventChoice[]; chosen: EventChoice | null };
 
 /**
- * Which event the panel asks about when the page has not said.
+ * Which events there are to ask about.
  *
- * The same event the applicants screen defaults to, read the same way, rather
- * than a choice made here. The panel appears on every screen and most of them
- * have no event in their URL, so without this it would open asking a question
- * before it could answer one -- and picking whichever event came back first
- * would make "how many confirmed" a wrong answer that looks right.
+ * Read from the applicants endpoint rather than from an endpoint of its own,
+ * because that is the list the console's own pickers are drawn from and a
+ * second source would eventually disagree with it about which event is
+ * current.
+ *
+ * The panel asks once, when it opens, and the chosen event is fixed for a
+ * conversation. An event is the one premise every figure carries and nothing
+ * in a sentence would reveal if it were wrong, so it is picked deliberately
+ * rather than inferred from whatever screen somebody happened to be on.
  */
-export async function here(): Promise<Here> {
+export async function events(): Promise<Events> {
   try {
     const response = await apiFetch("/admin/applicants", {
       signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
-      return { eventId: null, name: null };
+      return { events: [], chosen: null };
     }
 
     const body = await response.json();
-    const chosen = body?.chosen ?? null;
 
-    return chosen?.id
-      ? { eventId: chosen.id, name: chosen.name ?? null }
-      : { eventId: null, name: null };
+    const all: EventChoice[] = (body?.events ?? [])
+      .filter((one: { id?: string }) => Boolean(one?.id))
+      .map((one: { id: string; name?: string }) => ({
+        id: one.id,
+        name: one.name ?? "Untitled event",
+      }));
+
+    const chosen = body?.chosen?.id
+      ? all.find((one) => one.id === body.chosen.id) ?? null
+      : null;
+
+    return { events: all, chosen: chosen ?? all[0] ?? null };
   } catch {
-    return { eventId: null, name: null };
+    return { events: [], chosen: null };
   }
 }
