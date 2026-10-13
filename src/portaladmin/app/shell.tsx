@@ -1,15 +1,32 @@
 import { currentPerson } from "@/lib/api";
-import { CHECK_IN_DESK, isOn } from "@/lib/features";
+import { CHECK_IN_DESK, READING_MODE, isOn } from "@/lib/features";
 import { sectionsFor } from "./sections";
 import { SidebarLayout, SidebarPage } from "./sidebar";
 import { ChatPanel } from "@/components/assistant/chat-panel";
 import { displayName } from "@/lib/person-profile";
+import { READING_MODE_COOKIE, initialReadingMode } from "../../../libs/ui/reading-mode";
+import { cookies } from "next/headers";
 
 type SidebarOptions = {
   fullName?: string | null;
   email?: string | null;
   templateCount?: number;
 };
+
+/**
+ * Reading mode, resolved here rather than in the client sidebar.
+ *
+ * `isOn` is server-only by design, so the flag cannot be read in a "use client"
+ * component — which means the shell decides and passes the answer down, the
+ * same way it passes identity and permissions.
+ *
+ * Undefined means no cookie, and the client settles it from the OS preference
+ * after mount.
+ */
+async function readingMode() {
+  if (!isOn(READING_MODE)) return undefined;
+  return { enabled: true as const, initial: initialReadingMode((await cookies()).get(READING_MODE_COOKIE)?.value) };
+}
 
 async function sidebarProps({ fullName, email, templateCount }: SidebarOptions = {}) {
   const person = await currentPerson();
@@ -31,7 +48,7 @@ async function sidebarProps({ fullName, email, templateCount }: SidebarOptions =
 
 export async function ConsoleShell({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarLayout {...await sidebarProps()}>
+    <SidebarLayout {...await sidebarProps()} reading={await readingMode()}>
       {children}
       {/* One mount for the whole console, so a thread survives moving between
           screens. It fetches nothing until somebody opens it. */}

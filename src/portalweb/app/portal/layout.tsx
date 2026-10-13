@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { HACKER_PORTAL, isOn } from "@/lib/features";
+import { HACKER_PORTAL, READING_MODE, isOn } from "@/lib/features";
+import { READING_MODE_COOKIE, initialReadingMode } from "../../../../libs/ui/reading-mode";
+import { cookies } from "next/headers";
+import { ReadingToggle } from "../../components/reading-toggle";
 import Image from "next/image";
 import logo from "@/public/brands/morganhacks.png";
 import { siteConfig } from "@/site.config";
+import "../../../../libs/ui/reading-mode.css";
 import "./portal.css";
 
 export const metadata: Metadata = {
@@ -23,7 +27,7 @@ export const metadata: Metadata = {
  * somebody who is not signed in only offers them two more ways to be told to
  * sign in.
  */
-export default function PortalLayout({
+export default async function PortalLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   // Every screen under /portal passes through here, including the sign-in page,
@@ -39,8 +43,21 @@ export default function PortalLayout({
     redirect("/");
   }
 
+  // Reading mode, decided on the server so the very first byte already carries
+  // it. `undefined` means the cookie was absent and the client's OS preference
+  // decides after mount — see libs/ui/reading-mode.ts for why those two cases
+  // are deliberately different.
+  //
+  // Read here rather than in the root layout: that layout also wraps the
+  // public page, and a cookies() call in it would cost `/` its prerender the
+  // moment the flag is on. The attribute therefore goes on the portal frame
+  // rather than <html> — every rule in libs/ui/reading-mode.css keys off any
+  // ancestor carrying `[data-reading="on"]`, and this frame is the ancestor of
+  // everything the mode applies to.
+  const reading = isOn(READING_MODE) ? initialReadingMode((await cookies()).get(READING_MODE_COOKIE)?.value) : undefined;
+
   return (
-    <div className="portal">
+    <div className="portal" data-reading={reading ? "on" : undefined}>
       <header className="portal__bar">
         {/*
           A plain anchor rather than next/link. It leaves the portal for the
@@ -67,6 +84,22 @@ export default function PortalLayout({
           />
           <span>portal</span>
         </a>
+
+        {/*
+          Reading mode, behind enable_reading_mode_feature.
+
+          Rendered only when the flag is on, so with the flag off there is no
+          control anywhere in the portal and nothing on the page mentions it —
+          a feature that is off is meant to be indistinguishable from one that
+          was never built. See docs/feature-flags.md.
+
+          The initial value comes from the cookie this layout already read for
+          the frame's `data-reading` attribute, so the button's own state is
+          correct on arrival rather than flipping a moment after hydration.
+        */}
+        {isOn(READING_MODE) && (
+          <ReadingToggle initial={reading} />
+        )}
       </header>
 
       {children}

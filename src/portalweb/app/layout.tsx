@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Instrument_Serif } from "next/font/google";
+import localFont from "next/font/local";
 import { siteConfig } from "@/site.config";
 
 // No stylesheet here on purpose. This app serves two things with nothing in
@@ -12,6 +13,44 @@ const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-inter",
+});
+
+/**
+ * The reading face, behind enable_reading_mode_feature.
+ *
+ * OpenDyslexic, from @fontsource/opendyslexic rather than committed to this
+ * repository — it is SIL OFL 1.1, which permits web distribution, and taking
+ * it from npm keeps a font binary out of the tree while still self-hosting it.
+ * Next hashes and serves the file itself, so nothing is fetched from a CDN.
+ *
+ * Regular and bold only. The console leans on 600-weight emphasis and two real
+ * files look better than synthetic weight between them; an italic is not
+ * offered because nothing in reading mode sets any.
+ *
+ * `preload: false` because reading mode is off by default. Preloading a face
+ * almost nobody uses costs every applicant a request and a chunk of bandwidth
+ * to save a reader who has it on a fraction of a second.
+ */
+const openDyslexic = localFont({
+  src: [
+    {
+      path: "../node_modules/@fontsource/opendyslexic/files/opendyslexic-latin-400-normal.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../node_modules/@fontsource/opendyslexic/files/opendyslexic-latin-700-normal.woff2",
+      weight: "700",
+      style: "normal",
+    },
+  ],
+  display: "swap",
+  preload: false,
+  variable: "--font-opendyslexic",
+  // The family name comes from the font file, so this is the name the CSS in
+  // libs/ui/reading-mode.css refers to. next/font/local cannot rename the
+  // family, and renaming it is what the OFL forbids without a new name anyway.
+  fallback: ["sans-serif"],
 });
 
 /** Display face. Carries the whole page, so it is the only other font loaded. */
@@ -43,9 +82,16 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title, description },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // No reading-mode resolution here on purpose. This layout wraps the public
+  // page as well as the portal, and calling cookies() in it would pull the
+  // prerendered `/` into dynamic rendering the moment the flag is on. The
+  // cookie is read in app/portal/layout.tsx instead, which applies
+  // `data-reading` to the portal frame — reading-mode.css keys off any
+  // ancestor carrying the attribute, so the treatment reaches everything under
+  // that frame and `/` keeps its prerender and never sees the attribute.
   return (
     <html
       lang="en"
@@ -60,7 +106,7 @@ export default function RootLayout({
       // option and a bigger piece of work -- the mark needs a treatment that
       // holds on a dark ground before the preference can be honoured again.
       data-theme="light"
-      className={`${inter.variable} ${display.variable}`}
+      className={`${inter.variable} ${display.variable} ${openDyslexic.variable}`}
     >
       <body>{children}</body>
     </html>
