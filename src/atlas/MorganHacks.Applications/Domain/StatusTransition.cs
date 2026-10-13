@@ -41,10 +41,12 @@ public static class StatusTransition
         // touch. Deliberately manual: nothing should un-expire on its own.
         [ApplicationStatus.Expired] = [ApplicationStatus.Accepted],
 
-        // Terminal. Reversing any of these is a new application, not an edit,
-        // because the history has to keep saying what actually happened.
+        // Reopen an accidental rejection for review. The append-only history
+        // retains the rejection and records who reopened it.
+        [ApplicationStatus.Rejected] = [ApplicationStatus.UnderReview],
+
+        // Terminal.
         [ApplicationStatus.Declined] = [],
-        [ApplicationStatus.Rejected] = [],
         [ApplicationStatus.CheckedIn] = [],
         [ApplicationStatus.Withdrawn] = [],
     };
