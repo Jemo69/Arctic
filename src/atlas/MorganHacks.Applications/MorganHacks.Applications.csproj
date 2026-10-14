@@ -16,4 +16,5 @@
     <PackageReference Include="Azure.Storage.Blobs" Version="12.29.2" />
   </ItemGroup>
 
+  <ItemGroup><ProjectReference Include="../MorganHacks.Directory.Contracts/MorganHacks.Directory.Contracts.csproj" /></ItemGroup>
 </Project>
