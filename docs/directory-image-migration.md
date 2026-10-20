@@ -57,13 +57,17 @@ separately after deciding not to return to ImageSharp.
 
 ## Verification
 
-- macOS Release processor/API regression tests cover all eight EXIF orientations,
+- 256 targeted macOS Release API tests pass. Processor/API regression tests cover all eight EXIF orientations,
   crop, alpha, first frame, invalid/truncated files, byte/dimension limits,
   metadata chunk inspection, cancellation, upload ownership and delayed attachment.
 - Seed suite: 19 tests pass, including generated photo dimensions and rerun preservation.
 - Portal production build passes. The local browser preview uses the real API,
-  an isolated synthetic database, and private Azurite photo storage.
-- Final Linux AMD64 API image builds; native decode and WebP encode smoke passes.
+  an isolated synthetic database, and private Azurite photo storage. Browser upload,
+  save and reload confirm a persisted 400×400 photo. Browser console has no errors.
+- .NET formatting and diff whitespace checks pass. Distribution notices are copied
+  to build and publish outputs alongside the shared library.
+- Final Linux AMD64 API and seed images build; native decode and WebP encode smoke
+  passes in both runtime images.
 - The broader API run completed 976 tests with zero assertion failures before
   the test host was terminated by the 90-second inactivity watchdog. This is
   **not a completed full-suite pass**. Its TRX, sequence and dump are retained locally.
