@@ -29,15 +29,14 @@ Example (run from any checkout of Arctic):
 git push -u origin feat/directory-application-fields
 ```
 
-Push later branch names as their reviews are ready. PRs #226–235 are open. The October 20 preparation below is local only and has not been pushed or deployed.
+Push later branch names as their reviews are ready. PR #226 is merged; #227–235 remain in the stack. The October 20 preparation below is local only and has not been pushed or deployed.
 
-## Photo migration preparation (October 20)
+## SkiaSharp migration (October 20)
 
-ImageSharp has been removed from local `prep/*` branches. Uploads temporarily
-return 503, the profile editor explains their unavailability, and new local
-fixtures use initials. Existing photos remain readable/removable. No SkiaSharp
-package or replacement processor is introduced yet. See the
-[migration scope and acceptance criteria](directory-image-migration.md).
+The local `prep/*` branches use SkiaSharp for uploads and generated fixture photos.
+Main's merged PR #226 contracts relocation and form-key corrections are integrated
+into the prepared photo branch and descendants. Existing photos remain readable
+and removable. See the [migration scope and verification](directory-image-migration.md).
 
 The deployment directory variable is `ENABLE_DIRECTORY_FEATURE` (matching the runtime). Set the same variable separately on the Vercel portal projects when enabling the feature; Azure configuration does not configure Vercel.
 
@@ -53,7 +52,7 @@ The deployment directory variable is `ENABLE_DIRECTORY_FEATURE` (matching the ru
 
 ## Remaining launch work
 
-These branches organize the current implementation; they do not imply production readiness. The replacement photo processor, opening date, visual polish and a complete staging apply → accept → RSVP → upload → browse smoke test remain. Photo storage uses the existing private Azure account/container configuration.
+These branches organize the current implementation; they do not imply production readiness. The opening date, visual polish and a complete staging apply → accept → RSVP → upload → browse smoke test remain. Photo storage uses the existing private Azure account/container configuration.
 
 ## Original validation (before photo migration)
 
