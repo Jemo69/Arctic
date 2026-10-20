@@ -33,4 +33,5 @@
     <ProjectReference Include="..\MorganHacks.Migrations\MorganHacks.Migrations.csproj" />
   </ItemGroup>
 
+  <ItemGroup><None Update="Fixtures/DirectoryImages/*" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

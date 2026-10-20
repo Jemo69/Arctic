@@ -34,7 +34,7 @@ public partial class DirectoryEndpointTests
 public partial class DirectoryEndpointTests
 {
     [Fact]
-    public async Task Uploads_are_unavailable_without_writing_or_replacing_photos()
+    public async Task Uploads_are_processed_without_replacing_the_current_photo_until_saved()
     {
         var hacker = await Hacker();
         await Join(hacker.Cookie);
@@ -44,21 +44,27 @@ public partial class DirectoryEndpointTests
         await Store.Save(hacker.Person, hacker.Event, profile.Fields with { PhotoId = original }, default);
         var request = new HttpRequestMessage(HttpMethod.Post, "/portal/directory/profile/photo");
         request.Headers.Add("Cookie", hacker.Cookie);
-        request.Content = new MultipartFormDataContent { { new ByteArrayContent([137, 80, 78, 71]), "file", "photo.png" } };
+        request.Content = new MultipartFormDataContent { { new ByteArrayContent(DirectoryImageFixtures.Png()), "file", "photo.png" } };
         var response = await app.CreateClient(new() { HandleCookies = false }).SendAsync(request);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Equal("Photo uploads are temporarily unavailable. You can still save your profile.", (await Body(response)).GetProperty("error").GetString());
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var uploaded = (await Body(response)).GetProperty("photoId").GetGuid();
+        var row = await Store.FindPhoto(uploaded, default);
+        Assert.NotNull(row);
+        using var stored = await photos.Open(row.StorageKey, default);
+        using var image = SkiaSharp.SKBitmap.Decode(stored);
+        Assert.Equal(400, image.Width);
+        Assert.Equal(400, image.Height);
         Assert.Equal(original, (await Store.Mine(hacker.Person, hacker.Event, default))!.Fields.PhotoId);
         await using var count = db.DataSource.CreateCommand("SELECT count(*) FROM directory.photos WHERE person_id=@person");
         count.Parameters.AddWithValue("person", hacker.Person);
-        Assert.Equal(1L, (long)(await count.ExecuteScalarAsync())!);
+        Assert.Equal(2L, (long)(await count.ExecuteScalarAsync())!);
         Assert.Equal(HttpStatusCode.OK, (await Send("GET", $"/portal/directory/photos/{original}", hacker.Cookie)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Send("DELETE", "/portal/directory/profile/photo", hacker.Cookie)).StatusCode);
         Assert.Null((await Store.Mine(hacker.Person, hacker.Event, default))!.Fields.PhotoId);
     }
 
     [Fact]
-    public async Task Disabled_uploads_still_enforce_eligibility_and_archive_rules()
+    public async Task Uploads_enforce_eligibility_and_archive_rules()
     {
         var ineligible = await Hacker("accepted");
         Assert.Equal(HttpStatusCode.Forbidden, (await Send("POST", "/portal/directory/profile/photo", ineligible.Cookie)).StatusCode);

@@ -24,6 +24,7 @@ COPY libs/audit/MorganHacks.Audit/MorganHacks.Audit.csproj \
      libs/audit/MorganHacks.Audit/
 COPY libs/features/MorganHacks.Features/MorganHacks.Features.csproj \
      libs/features/MorganHacks.Features/
+COPY libs/directory/MorganHacks.Directory.Images/MorganHacks.Directory.Images.csproj libs/directory/MorganHacks.Directory.Images/
 COPY global.json ./
 COPY src/atlas/Directory.Build.props src/atlas/
 COPY src/lark/Directory.Build.props  src/lark/
