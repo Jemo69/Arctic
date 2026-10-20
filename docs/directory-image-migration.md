@@ -64,3 +64,36 @@ interim version expecting working uploads or advertise the photo PR as complete.
 No stored secrets were read or deleted. Only their source-code references and
 build-secret mounts were removed. Existing secret-store entries can be retired
 separately after deciding not to return to ImageSharp.
+
+## Verification on October 20
+
+- Photo branch: 156 selected API regression tests pass in Release; the new
+  unavailable-upload test was observed failing before the implementation change.
+- Complete prepared stack: 159 directory/form-validation/form-submission/portal
+  regression tests pass in Release (including photo, browse and moderation).
+- Seed suite: 19 tests pass, including no-photo seeding and rerun preservation.
+- Actual API and seed Docker `build` stages publish successfully for Linux AMD64
+  with no license secrets. Final runtime stages and deployment were not run.
+- Portal production build and TypeScript checks pass on the prepared profile
+  branch. No browser end-to-end smoke test was performed for this preparation.
+- .NET formatting verification, workflow YAML parsing, shell syntax and diff
+  whitespace checks pass. API and seed resolved package graphs contain no
+  SixLabors packages. All nine prepared branch tips have no ImageSharp/SixLabors
+  references under source, workflows, deployment or scripts, and each retains
+  its original GitHub feature head as an ancestor.
+
+The full Atlas suite is **not green**. Two form-builder failures were reproduced
+in isolation: `Reordering_questions_keeps_the_order_it_was_sent_in` and
+`History_records_each_version_and_what_became_of_it`. Both reject the original
+`directory_contactLinks`, `directory_buildIdea` and `directory_lookingFor` form
+keys. Those source files are unchanged from the original full-stack head; the
+corrections on PR #226 have not propagated to its descendants. The broad run was
+stopped after these failures and several minutes without further progress; it
+was not reported as a completed full-suite pass. Integrate the PR #226 fixes
+through the stack separately, including their shared-library path updates, then
+rerun the full suite before merging.
+
+The unchanged portal lockfile also reports three high-severity npm audit entries
+in the `@vercel/config` → `@vercel/routing-utils` → `path-to-regexp` chain
+(GHSA-9wv6-86v2-598j). No dependencies were upgraded or audit checks suppressed as
+part of this image-library removal.
