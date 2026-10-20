@@ -31,3 +31,36 @@ writes/replacement, continued reads/removals, and eligibility/archive checks.
 
 Roll back by reverting preparation commits, which restores the old dependency
 and its license requirement. No data rollback is necessary.
+
+## Branch scope and local preparation
+
+The original PR heads have not been rewritten or pushed. Local preparation
+branches retain their original feature head as an ancestor, then merge the
+prepared predecessor. This avoids force pushes and preserves review changes.
+
+| Existing branch / PR | Local prepared branch | Change needed |
+|---|---|---|
+| Features 1–4 / #226–229 | None | No ImageSharp usage |
+| `feat/directory-photos` / #230 | `prep/directory-photos` | Remove API decoder/package and shared CI/Docker license wiring; disable upload writes; add regression tests |
+| `feat/directory-browse-api` / #231 | `prep/directory-browse-api` | Inherit photo changes; browse behavior unchanged |
+| `chore/directory-seed-data` / #232 | `prep/directory-seed-data` | Remove seed encoder/package, seed license wiring and unused seed storage adapter; test rerun preservation |
+| `feat/portal-directory-profile` / #233 | `prep/portal-directory-profile` | Remove upload control/handler; explain temporary unavailability; retain photo removal |
+| `feat/portal-directory-browse` / #234 | `prep/portal-directory-browse` | Inherit changes; existing photo/initials rendering remains |
+| `feat/console-directory-moderation` / #235 | `prep/console-directory-moderation` | Inherit changes and update handoff/fixture documentation |
+| `codex/directory-opening-timezone` / #240 | `prep/directory-opening-timezone` | Merge prepared profile predecessor, preserving timezone fix |
+| `codex/directory-unsaved-status` / #242 | `prep/directory-unsaved-status` | Merge prepared profile predecessor, preserving unsaved-status fix |
+| `codex/directory-pagination-errors` / #244 | `prep/directory-pagination-errors` | Merge prepared browse predecessor, preserving pagination fix |
+
+Main, staging, and unrelated branches have no directory ImageSharp dependency.
+The original PR #226 contracts relocation has not yet propagated through the
+original stack; that separate integration remains necessary before landing.
+
+The preparation checkout is `directory-image-prep` beside `review-fixes`.
+The `upstream/*` refs are snapshots of GitHub heads fetched on October 20.
+Before any later push, fetch GitHub again and reconcile new review changes.
+Apply prepared changes in stack order, preserving ancestry. Do not deploy this
+interim version expecting working uploads or advertise the photo PR as complete.
+
+No stored secrets were read or deleted. Only their source-code references and
+build-secret mounts were removed. Existing secret-store entries can be retired
+separately after deciding not to return to ImageSharp.

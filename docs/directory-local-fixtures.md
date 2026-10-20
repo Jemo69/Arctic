@@ -9,7 +9,7 @@ From the repository root, start the existing local Postgres and Azurite stack an
 
 The first command is a preview. The second verifies the local Docker Postgres cluster before writing. `--directory --staging` is refused. The separate `mock-directory-v1` event has a past directory opening date; no real event's date is changed.
 
-Fixtures create 41 suppressed-email hacker identities, 40 confirmed applications, 30 opted-in profiles before moderation/opt-out adjustments, and 10 generated placeholder photos in local Azurite. Existing profiles and application decisions are preserved on reruns. A failed partial seed may require inspecting the incomplete fixture before retrying photos; it is not a production repair tool.
+Fixtures create 41 suppressed-email hacker identities, 40 confirmed applications, 30 opted-in profiles before moderation/opt-out adjustments, and no new photos while image processing is being replaced. The portal displays initials for new fixtures. Existing profiles and application decisions are preserved on reruns. Existing photo records and stored blobs are left intact. This is not a production repair tool.
 
 Use the existing local development sign-in flow with `mock-directory-01@example.com` through `mock-directory-41@example.com`. Number 41 is accepted but has not RSVP'd. Numbers 28 and 29 are hidden; 30 is opted out. Never send email to these fixture addresses.
 
@@ -17,4 +17,4 @@ Enable `ENABLE_HACKER_PORTAL_FEATURE=true` and `ENABLE_DIRECTORY_FEATURE=true` o
 
 Teams contain at most four hackers, including the profile owner. “Teammates needed” allows one, two, or three.
 
-The seed executable directly references ImageSharp to generate placeholder photos. Debug builds run without a key; Release builds require an appropriate Six Labors key covering `MorganHacks.Seed`, in addition to `MorganHacks.Api` for uploads. Do not put license keys in Git.
+The seed executable no longer depends on ImageSharp or a license key. Directory seeding does not contact photo storage during this preparation phase. See [the migration plan](directory-image-migration.md) before restoring photo generation.

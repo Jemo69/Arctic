@@ -4,7 +4,7 @@ These ten local feature branches start from staging commit `5fbf20d476f3d6f142f6
 
 | Order | Feature branch | Review against |
 |---|---|---|
-| 1 | `feat/directory-application-fields` | `staging` |
+| 1 | `feat/directory-application-fields` | `main` |
 | 2 | `feat/directory-module` | `feat/directory-application-fields` |
 | 3 | `feat/directory-rsvp-optin` | `feat/directory-module` |
 | 4 | `feat/directory-profile-api` | `feat/directory-rsvp-optin` |
@@ -17,9 +17,9 @@ These ten local feature branches start from staging commit `5fbf20d476f3d6f142f6
 
 ## Shipping order
 
-1. Push and review `feat/directory-application-fields` against `staging`. It adds optional application questions and the form-builder upgrade action. Existing published forms are not silently republished.
-2. Review each later branch against its preceding feature branch to see just that feature. Merge into staging in the listed order. Once the predecessor is merged, retarget the next PR to staging.
-3. Preserve commit ancestry with merge commits. If your repository requires squash merges, rebase the remaining stack onto the updated staging branch before proceeding; otherwise later PRs can show already-merged features again.
+1. Push and review `feat/directory-application-fields` against `main`. It adds optional application questions and the form-builder upgrade action. Existing published forms are not silently republished.
+2. Review each later branch against its preceding feature branch to see just that feature. Merge into main in the listed order. Once the predecessor is merged, retarget the next PR to main; staging follows the normal deployment workflow.
+3. Preserve commit ancestry with merge commits. If your repository requires squash merges, rebase the remaining stack onto the updated main branch before proceeding; otherwise later PRs can show already-merged features again.
 4. Keep `ENABLE_DIRECTORY_FEATURE` off while integrating unfinished features. The default remains false in the API and both portals. Portal access separately requires `ENABLE_HACKER_PORTAL_FEATURE`.
 5. Do not enable browsing until organizers choose an opening date. A missing opening date keeps browsing closed. Maximum team size is four, so teammates needed ranges from one to three.
 
@@ -29,13 +29,15 @@ Example (run from any checkout of Arctic):
 git push -u origin feat/directory-application-fields
 ```
 
-Push later branch names as their reviews are ready. No branch was pushed and no staging deployment was run as part of preparing this stack.
+Push later branch names as their reviews are ready. PRs #226–235 are open. The October 20 preparation below is local only and has not been pushed or deployed.
 
-## Release blocker begins at feature 5
+## Photo migration preparation (October 20)
 
-The first four branches do not reference ImageSharp and were checked with Release builds. `feat/directory-photos` introduces ImageSharp 4.1.3. That branch and its descendants require an appropriate Six Labors key for Release builds. Feature 7 also uses ImageSharp in `MorganHacks.Seed` for generated photos.
-
-Supply `SIXLABORS_LICENSE_KEY` as a GitHub repository secret for PR/nightly builds and in the applicable deployment environment if its secrets override repository configuration. Build processes receive it as `SixLaborsLicenseKey`; Docker receives it through a BuildKit secret. The key must cover both `MorganHacks.Api` and `MorganHacks.Seed` when assembly-scoped. Do not commit the key, and do not bypass the Release license check.
+ImageSharp has been removed from local `prep/*` branches. Uploads temporarily
+return 503, the profile editor explains their unavailability, and new local
+fixtures use initials. Existing photos remain readable/removable. No SkiaSharp
+package or replacement processor is introduced yet. See the
+[migration scope and acceptance criteria](directory-image-migration.md).
 
 The deployment directory variable is `ENABLE_DIRECTORY_FEATURE` (matching the runtime). Set the same variable separately on the Vercel portal projects when enabling the feature; Azure configuration does not configure Vercel.
 
@@ -51,9 +53,9 @@ The deployment directory variable is `ENABLE_DIRECTORY_FEATURE` (matching the ru
 
 ## Remaining launch work
 
-These branches organize the current implementation; they do not imply production readiness. The license, opening date, visual polish and a complete staging apply → accept → RSVP → upload → browse smoke test remain. Photo storage uses the existing private Azure account/container configuration.
+These branches organize the current implementation; they do not imply production readiness. The replacement photo processor, opening date, visual polish and a complete staging apply → accept → RSVP → upload → browse smoke test remain. Photo storage uses the existing private Azure account/container configuration.
 
-## Validation performed
+## Original validation (before photo migration)
 
 - Every branch: backend solution build and the directory/form/RSVP regression selection.
 - Features 1–4: Release builds passed without an ImageSharp dependency.
