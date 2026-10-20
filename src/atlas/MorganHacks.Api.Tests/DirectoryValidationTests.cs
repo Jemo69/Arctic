@@ -5,6 +5,49 @@ namespace MorganHacks.Api.Tests;
 
 public class DirectoryValidationTests
 {
+    [Fact]
+    public void Directory_starting_questions_have_saveable_keys()
+    {
+        Assert.Empty(DraftKeys.Check(DirectoryQuestions.All));
+    }
+
+    [Fact]
+    public void Directory_answers_use_stable_form_keys()
+    {
+        var answers = new Dictionary<string, JsonElement>
+        {
+            ["directory_contact_links"] = JsonSerializer.SerializeToElement(new[] { "github|https://github.com/ada" }),
+            ["directory_build_idea"] = JsonSerializer.SerializeToElement("A project"),
+            ["directory_looking_for"] = JsonSerializer.SerializeToElement("Teammates")
+        };
+        Assert.Empty(SubmissionValidation.Check(DirectoryQuestions.All, answers));
+        var profile = DirectoryQuestions.Read(answers);
+        Assert.Equal("A project", profile.BuildIdea);
+        Assert.Equal("Teammates", profile.LookingFor);
+        var field = Assert.Single(DirectoryQuestions.All, f => f.Key == "directory_contact_links");
+        var normalized = DirectoryQuestions.Normalized(field, answers[field.Key]);
+        Assert.Equal(new[] { "github|ada" }, Assert.IsType<string[]>(normalized));
+        Assert.Equal("ada", DirectoryQuestions.Read(new Dictionary<string, JsonElement>
+        {
+            [field.Key] = JsonSerializer.SerializeToElement(normalized)
+        }).ContactLinks[0].Value);
+    }
+
+    [Theory]
+    [InlineData("directory_contact_links")]
+    [InlineData("directory_build_idea")]
+    [InlineData("directory_looking_for")]
+    public void Directory_validation_errors_use_form_keys(string key)
+    {
+        var value = key == "directory_contact_links"
+            ? JsonSerializer.SerializeToElement(new[] { "website|javascript:alert(1)" })
+            : JsonSerializer.SerializeToElement(new string('x', 281));
+        var problems = DirectoryQuestions.Check(DirectoryQuestions.All,
+            new Dictionary<string, JsonElement> { [key] = value });
+        Assert.NotEmpty(problems);
+        Assert.All(problems, problem => Assert.Equal(key, problem.FieldKey));
+    }
+
     [Theory]
     [InlineData("Freshman", true)]
     [InlineData("Graduate student", true)]

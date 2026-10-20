@@ -39,7 +39,7 @@ public static partial class Redaction
             // The whole free-form answer set, whatever it ends up holding
             "responses", "displayName", "display_name", "headline", "pronouns",
             "buildIdea", "build_idea", "lookingFor", "looking_for", "contactLinks", "contact_links",
-            "directory_headline", "directory_pronouns", "directory_buildIdea", "directory_lookingFor", "directory_contactLinks",
+            "directory_headline", "directory_pronouns", "directory_build_idea", "directory_looking_for", "directory_contact_links",
 
             // Somebody's CV
             "resume_key", "resumeKey", "resume_filename",
