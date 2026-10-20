@@ -6,11 +6,12 @@ using MorganHacks.Directory.Contracts;
 using MorganHacks.Directory.Data;
 using MorganHacks.Directory.Domain;
 using MorganHacks.Identity.Services;
+using MorganHacks.Directory.Images;
 namespace MorganHacks.Api;
 
 public static partial class DirectoryEndpoints
 {
-    public const int PhotoMaxBytes = 5 * 1024 * 1024;
+    public const int PhotoMaxBytes = DirectoryPhotoProcessor.MaxBytes;
     static partial void MapDirectoryPhotos(RouteGroupBuilder portal)
     {
         portal.MapPost("/profile/photo", UploadPhoto).AddEndpointFilter(async (context, next) =>
@@ -23,13 +24,27 @@ public static partial class DirectoryEndpoints
         portal.MapDelete("/profile/photo", DetachPhoto);
         portal.MapGet("/photos/{photoId:guid}", ReadPhoto);
     }
-    private static async Task<IResult> UploadPhoto(HttpContext http, IApplicantPortalStore applicants, IDirectoryApplicantSource source, DirectoryStore store, CancellationToken ct)
+    private static async Task<IResult> UploadPhoto(HttpContext http, IApplicantPortalStore applicants, IDirectoryApplicantSource source, DirectoryStore store, IPhotoStorage storage, CancellationToken ct)
     {
         var e = await Event(http, applicants, source, ct); if (e is null) return Refused();
         if ((await store.Settings(e.Value, ct)).ArchivedAt is not null) throw new DirectoryConflict("The directory has closed. Profiles are read-only.");
-        // Do not read or store uploads until the replacement processor validates
-        // and re-encodes them. Existing photo reads and removals remain available.
-        return Results.Json(new { error = "Photo uploads are temporarily unavailable. You can still save your profile." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        if (!http.Request.HasFormContentType) return Results.BadRequest(new { error = "Choose one image file." });
+        try
+        {
+            var form = await http.Request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = PhotoMaxBytes + 65536 }, ct);
+            if (form.Files.Count != 1) return Results.BadRequest(new { error = "Choose one image file." });
+            var file = form.Files[0];
+            if (file.Length > PhotoMaxBytes) return Results.StatusCode(413);
+            using var input = new MemoryStream();
+            await file.CopyToAsync(input, ct);
+            var bytes = await DirectoryPhotoProcessor.ProcessAsync(input.ToArray(), ct);
+            var id = Guid.NewGuid();
+            var key = $"directory/photos/{e.Value}/{id}.webp";
+            await store.AddPhoto(id, http.PersonId(), e.Value, key, bytes, storage, ct);
+            return Results.Ok(new { photoId = id, previewUrl = PhotoUrl(id) });
+        }
+        catch (InvalidDataException)
+        { return Results.BadRequest(new { error = "Choose a valid JPEG, PNG or WebP up to 5 MB, with each side between 200 and 8000 pixels." }); }
     }
     private static async Task<IResult> DetachPhoto(HttpContext http, IApplicantPortalStore applicants, IDirectoryApplicantSource source, DirectoryStore store, CancellationToken ct)
     {

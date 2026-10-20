@@ -24,6 +24,10 @@
     <ProjectReference Include="..\\..\\..\\libs\\features\\MorganHacks.Features\\MorganHacks.Features.csproj" />
   </ItemGroup>
 
-  <ItemGroup><ProjectReference Include="../MorganHacks.Directory.Contracts/MorganHacks.Directory.Contracts.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../../libs/directory/MorganHacks.Directory.Contracts/MorganHacks.Directory.Contracts.csproj" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../MorganHacks.Directory/MorganHacks.Directory.csproj" /></ItemGroup>
+  <ItemGroup>
+    <!-- Shared, bounded photo decoding and encoding; storage remains in the API. -->
+    <ProjectReference Include="../../../libs/directory/MorganHacks.Directory.Images/MorganHacks.Directory.Images.csproj" />
+  </ItemGroup>
 </Project>
