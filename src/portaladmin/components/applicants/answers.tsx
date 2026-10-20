@@ -68,7 +68,7 @@ function Value({ answer }: { answer: Answer }) {
     </div>;
   }
 
-  if (key === "directory_contactLinks" && Array.isArray(value)) return <ul>{value.map((v,i)=><li key={i}>{String(v).replace("|", ": ")}</li>)}</ul>;
+  if (key === "directory_contact_links" && Array.isArray(value)) return <ul>{value.map((v,i)=><li key={i}>{String(v).replace("|", ": ")}</li>)}</ul>;
 
   if (Array.isArray(value)) {
     // A checkboxes answer. A list rather than a comma-separated line, because
