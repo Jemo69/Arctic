@@ -1,6 +1,4 @@
 using System.Text.Json;
-using Azure.Storage.Blobs;
-using Azure.Storage.Blobs.Models;
 using MorganHacks.Applications.Data;
 using MorganHacks.Applications.Domain;
 using MorganHacks.Applications.Forms;
@@ -8,9 +6,6 @@ using MorganHacks.Directory;
 using MorganHacks.Directory.Contracts;
 using MorganHacks.Directory.Data;
 using Npgsql;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.PixelFormats;
 namespace MorganHacks.Seed;
 
 /// <summary>Separate local-only event; reruns preserve edited profiles and application decisions.</summary>
@@ -31,7 +26,7 @@ public sealed class DirectorySeedRunner(NpgsqlDataSource db)
         var forms = new PostgresFormStore(db); var form = (await forms.ForEventAsync(EventId)).SingleOrDefault(f => f.IsApplication) ?? await forms.CreateAsync(EventId, "MOCK directory application", "application", null);
         var version = await forms.PublishedAsync(form.Id);
         if (version is null) { await forms.DraftAsync(form.Id, null); await forms.SaveDraftAsync(form.Id, [.. SeedRunner.Fields, .. DirectoryQuestions.All]); version = await forms.PublishAsync(form.Id, null); }
-        var store = new DirectoryStore(db); var directory = new HackerDirectory(store, new DirectoryApplicantSource(db)); var storage = new LocalPhotos();
+        var store = new DirectoryStore(db); var directory = new HackerDirectory(store, new DirectoryApplicantSource(db));
         for (var i = 1; i <= 41; i++)
         {
             var email = $"mock-directory-{i:D2}@example.com";
@@ -58,22 +53,11 @@ public sealed class DirectorySeedRunner(NpgsqlDataSource db)
             var p = (await store.Mine(person, EventId, default))!;
             var fields = p.Fields with { TeamStatus = Catalogues.TeamStatuses[i % 4], TeammatesNeeded = i % 4 == 1 ? 1 : null, FirstHackathon = i % 2 == 0 };
             if (i % 7 == 0) fields = fields with { Skills = [] };
-            if (i <= 10)
-            {
-                using var image = new Image<Rgb24>(400, 400, new Rgb24((byte)(40 + i * 12), (byte)(80 + i * 8), (byte)(160 + i * 5)));
-                using var output = new MemoryStream(); await image.SaveAsync(output, new WebpEncoder { Quality = 82 }); var photo = Guid.NewGuid();
-                await store.AddPhoto(photo, person, EventId, $"directory/photos/{EventId}/{photo}.webp", output.ToArray(), storage, default); fields = fields with { PhotoId = photo };
-            }
+            // New fixtures use the portal's initials fallback until photo
+            // processing is restored. Existing profiles are preserved above.
             await store.Save(person, EventId, fields, default);
             if (i is 28 or 29) await store.Moderate(EventId, person, p.Id, "hide", "Synthetic moderation example", null, default);
             if (i == 30) await directory.OptOut(person, EventId);
         }
-    }
-    private sealed class LocalPhotos : IPhotoStorage
-    {
-        private readonly BlobContainerClient container = new BlobServiceClient("UseDevelopmentStorage=true").GetBlobContainerClient("resumes");
-        public async Task Put(string key, byte[] bytes, CancellationToken ct) { await container.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: ct); await container.GetBlobClient(key).UploadAsync(BinaryData.FromBytes(bytes), new BlobUploadOptions { HttpHeaders = new() { ContentType = "image/webp" } }, ct); }
-        public async Task<Stream> Open(string key, CancellationToken ct) => (await container.GetBlobClient(key).DownloadStreamingAsync(cancellationToken: ct)).Value.Content;
-        public async Task DeletePending(string key, CancellationToken ct) => await container.GetBlobClient(key).DeleteIfExistsAsync(cancellationToken: ct);
     }
 }

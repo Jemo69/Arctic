@@ -9,7 +9,7 @@ COPY src/atlas/MorganHacks.Directory.Contracts/ src/atlas/MorganHacks.Directory.
 COPY src/atlas/MorganHacks.Directory/ src/atlas/MorganHacks.Directory/
 COPY src/atlas/MorganHacks.Seed/ src/atlas/MorganHacks.Seed/
 COPY src/atlas/MorganHacks.Applications/ src/atlas/MorganHacks.Applications/
-RUN --mount=type=secret,id=sixlabors_license_key,env=SixLaborsLicenseKey dotnet publish src/atlas/MorganHacks.Seed/MorganHacks.Seed.csproj -c Release -o /app
+RUN dotnet publish src/atlas/MorganHacks.Seed/MorganHacks.Seed.csproj -c Release -o /app
 FROM mcr.microsoft.com/dotnet/runtime:10.0
 RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
