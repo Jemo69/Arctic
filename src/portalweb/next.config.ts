@@ -49,6 +49,9 @@ import type { NextConfig } from "next";
 const apiOrigin = process.env.API_ORIGIN ?? "http://localhost:5050";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    agentUpgrade: "security",
+  },
   /**
    * The bundler's filesystem root is the repository, not this app.
    *
