@@ -70,7 +70,11 @@ html:has(.heist) body {
   backdrop-filter: blur(8px) saturate(130%);
 }
 
+/* The sign-in page has no <main> of its own: its .signin box is the frame's
+   direct child, so it needs the same full-width row or the grid squeezes it
+   into the narrow wordmark column. */
 .heist > main,
+.heist > .signin,
 .heist > .portal__foot {
   grid-column: 1 / -1;
   /* Grid items default to their content's width; without this a long filter
@@ -461,6 +465,13 @@ html:has(.heist) body {
 }
 
 /* Page type --------------------------------------------------------------- */
+
+/* Sign-in sits in the same left column as every other page, clear of the vault. */
+.heist .signin {
+  place-items: start;
+  padding: 2.75rem 2rem 3.5rem;
+  margin-left: max(0rem, calc((100vw - 1360px) / 2));
+}
 
 .heist main {
   max-width: 46rem;
@@ -1150,12 +1161,19 @@ html:has(.heist) body {
   }
 
   .heist > main,
+  .heist > .signin,
   .heist > .portal__foot {
     grid-row: auto;
   }
 
   .heist main {
     margin: 0 auto;
+    padding: 2rem 1rem 3rem;
+  }
+
+  .heist .signin {
+    place-items: center;
+    margin: 0;
     padding: 2rem 1rem 3rem;
   }
 
