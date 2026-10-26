@@ -40,7 +40,17 @@ export function BrowseDirectory({status,self,selfId}:{status:DirectoryStatus;sel
  useEffect(()=>{if(!selected){dialog.current?.close();opener.current?.focus();setDetail(null);return}const controller=new AbortController();setDetail(null);setDetailError("");setCopied("");dialog.current?.showModal();
  directoryRequest<DirectoryProfile>(`/${encodeURIComponent(selected)}`,{signal:controller.signal}).then(setDetail).catch(e=>{if(e.name!=="AbortError")setDetailError(e.message)});return()=>controller.abort()},[selected]);
  function close(){const p=new URLSearchParams(window.location.search);p.delete("h");router.replace(`/portal/directory${p.size?`?${p}`:""}`,{scroll:false})}
- async function loadMore(){if(!page.nextCursor)return;const key=filterKey;setMore(true);setError("");try{const result=await directoryRequest<Page>(`?${key}&cursor=${encodeURIComponent(page.nextCursor)}`);const current=new URLSearchParams(window.location.search);current.delete("h");current.delete("edit");if(current.toString()===key)setPage(p=>({items:[...p.items,...result.items.filter(i=>!p.items.some(old=>old.id===i.id))],nextCursor:result.nextCursor}))}catch(e){setError((e as Error).message)}finally{setMore(false)}}
+ async function loadMore(){
+  if(!page.nextCursor)return;
+  const key=filterKey;
+  // A late page or error from filters the viewer has since changed is dropped (#244); h and edit are not filters.
+  const isCurrentFilter=()=>{const current=new URLSearchParams(window.location.search);current.delete("h");current.delete("edit");return current.toString()===key};
+  setMore(true);setError("");
+  try{
+   const result=await directoryRequest<Page>(`?${key}&cursor=${encodeURIComponent(page.nextCursor)}`);
+   if(isCurrentFilter())setPage(p=>({items:[...p.items,...result.items.filter(i=>!p.items.some(old=>old.id===i.id))],nextCursor:result.nextCursor}));
+  }catch(e){if(isCurrentFilter())setError((e as Error).message)}finally{setMore(false)}
+ }
  const skills=(params.get("skills")??"").split(",").filter(Boolean);const one=(k:string)=>params.get(k)?[params.get(k)!]:[];
  return <><div className="directory-bar"><label className="directory-search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span className="visually-hidden">Search hackers</span><input ref={search} type="search" value={query} maxLength={100} placeholder="Search names, schools, skills" onChange={e=>setQuery(e.target.value)}/><kbd aria-hidden="true">/</kbd></label>
  <div className="directory-chips" role="group" aria-label="Filters">
