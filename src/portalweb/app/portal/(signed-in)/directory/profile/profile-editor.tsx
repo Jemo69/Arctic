@@ -23,7 +23,7 @@ export function ProfileEditor({status,initial,onDirty}:{status:DirectoryStatus;i
  function field(key:"displayName"|"school"|"pronouns"|"headline"|"buildIdea",label:string,max:number,placeholder?:string){const value=profile?.[key]??"";return <div className="directory-field" key={key}><label htmlFor={key}>{label}</label><input id={key} value={value} maxLength={max} placeholder={placeholder} onChange={e=>set(key,e.target.value)} aria-invalid={!!errors[key]} aria-describedby={`${key}-count ${key}-error`} />{count(key,value.length,max)}<span id={`${key}-error`} className="directory-error">{errors[key]?.join(" ")}</span></div>}
  const missing=own.missingFields.map(s=>({displayName:"display name",school:"school",skills:"skills",contactLinks:"contact links"}[s]??s));
  return <>
- {archived?<p className="notice">The directory has closed. Your profile is read-only.</p>:status.phase==="notOpen"?<p className="notice">{status.opensAt?`Your complete, opted-in profile appears on ${new Date(status.opensAt).toLocaleDateString()}.`:"The opening date has not been announced. You can prepare your profile now."}</p>:null}
+ {archived?<p className="notice">The directory has closed. Your profile is read-only.</p>:status.phase==="notOpen"?<p className="notice">{status.opensAt?`Your complete, opted-in profile appears on ${new Date(status.opensAt).toLocaleDateString("en-US",{timeZone:"America/New_York"})}.`:"The opening date has not been announced. You can prepare your profile now."}</p>:null}
  {own.state==="hidden"?<p className="notice">Organizers have hidden your profile: {own.hiddenReason}. You can still edit it.</p>:null}
  {own.photoRemoved?<p className="notice">Organizers removed your photo. You can upload another.</p>:null}
  {!profile?<><p role="status">{message}</p>{error?<p role="alert" className="directory-error">{error}</p>:null}<button disabled={busy||archived} onClick={()=>action("/profile/opt-in")}>Join the hacker directory</button></>:
@@ -64,7 +64,7 @@ export function ProfileEditor({status,initial,onDirty}:{status:DirectoryStatus;i
    <span id="contactLinks-error" className="directory-error">{errors.contactLinks?.join(" ")}</span></fieldset>
  </section>
  </fieldset>
- <footer className="editor-foot"><p role="status" className="quiet">{error?<span role="alert" className="directory-error">{error}</span>:null}{/* The missing-fields hint stays beside "Saved.", or a save reads as "you're live". */}{error?null:[message||(dirty?"Unsaved changes.":""),missing.length?`To appear in the directory, add: ${missing.join(", ")}.`:""].filter(Boolean).join(" ")}</p>
+ <footer className="editor-foot"><p role="status" className="quiet">{error?<span role="alert" className="directory-error">{error}</span>:null}{/* The missing-fields hint stays beside "Saved.", or a save reads as "you're live". */}{error?null:[dirty?"Unsaved changes.":message,missing.length?`To appear in the directory, add: ${missing.join(", ")}.`:""].filter(Boolean).join(" ")}</p>
   <button type="submit" className="primary" disabled={busy||archived}>{busy?"Saving…":"Save profile"}</button></footer>
  {crop?<PhotoCrop file={crop} onCancel={()=>setCrop(null)} onDone={f=>void photo(f)}/>:null}
  </form>}
