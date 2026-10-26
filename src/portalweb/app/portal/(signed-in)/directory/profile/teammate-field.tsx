@@ -30,11 +30,8 @@ export function TeammateField({ value, errors, onChange }: {
         aria-invalid={!!errors?.length}
         aria-describedby="lookingFor-count lookingFor-help lookingFor-error"
       />
-      <small id="lookingFor-count" aria-live="polite">{value.length} / {maxLength}</small>
-      <small id="lookingFor-help">
-        Need ideas? Add a suggestion, combine a few, or write your own. You can edit everything.
-        Suggestions already added or too long to fit are unavailable.
-      </small>
+      {value.length > maxLength * 0.8 ? <small id="lookingFor-count" className="editor-count" aria-live="polite">{value.length} / {maxLength}</small> : null}
+      <small id="lookingFor-help" className="visually-hidden">Add suggestions below or write your own.</small>
       <div className="directory-suggestions" role="group" aria-label="Teammate suggestions">
         {suggestions.map(suggestion => {
           const added = value.toLowerCase().includes(suggestion.toLowerCase());
