@@ -8,13 +8,12 @@ using MorganHacks.Directory;
 using MorganHacks.Directory.Contracts;
 using MorganHacks.Directory.Data;
 using Npgsql;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
+using MorganHacks.Directory.Images;
 namespace MorganHacks.Seed;
 
 /// <summary>Separate local-only event; reruns preserve edited profiles and application decisions.</summary>
-public sealed class DirectorySeedRunner(NpgsqlDataSource db)
+public sealed class DirectorySeedRunner(NpgsqlDataSource db, IPhotoStorage? photos = null)
 {
     public static readonly Guid EventId = Guid.Parse("558164e4-fd5b-4ec8-96ef-131140fc1ccd");
     public async Task RunAsync()
@@ -31,7 +30,7 @@ public sealed class DirectorySeedRunner(NpgsqlDataSource db)
         var forms = new PostgresFormStore(db); var form = (await forms.ForEventAsync(EventId)).SingleOrDefault(f => f.IsApplication) ?? await forms.CreateAsync(EventId, "MOCK directory application", "application", null);
         var version = await forms.PublishedAsync(form.Id);
         if (version is null) { await forms.DraftAsync(form.Id, null); await forms.SaveDraftAsync(form.Id, [.. SeedRunner.Fields, .. DirectoryQuestions.All]); version = await forms.PublishAsync(form.Id, null); }
-        var store = new DirectoryStore(db); var directory = new HackerDirectory(store, new DirectoryApplicantSource(db)); var storage = new LocalPhotos();
+        var store = new DirectoryStore(db); var directory = new HackerDirectory(store, new DirectoryApplicantSource(db)); var storage = photos ?? new LocalPhotos();
         for (var i = 1; i <= 41; i++)
         {
             var email = $"mock-directory-{i:D2}@example.com";
@@ -60,9 +59,13 @@ public sealed class DirectorySeedRunner(NpgsqlDataSource db)
             if (i % 7 == 0) fields = fields with { Skills = [] };
             if (i <= 10)
             {
-                using var image = new Image<Rgb24>(400, 400, new Rgb24((byte)(40 + i * 12), (byte)(80 + i * 8), (byte)(160 + i * 5)));
-                using var output = new MemoryStream(); await image.SaveAsync(output, new WebpEncoder { Quality = 82 }); var photo = Guid.NewGuid();
-                await store.AddPhoto(photo, person, EventId, $"directory/photos/{EventId}/{photo}.webp", output.ToArray(), storage, default); fields = fields with { PhotoId = photo };
+                using var image = new SKBitmap(400, 400);
+                image.Erase(new SKColor((byte)(40 + i * 12), (byte)(80 + i * 8), (byte)(160 + i * 5)));
+                using var pixels = image.PeekPixels();
+                using var png = pixels.Encode(SKPngEncoderOptions.Default) ?? throw new InvalidOperationException("Could not encode fixture image.");
+                var output = await DirectoryPhotoProcessor.ProcessAsync(png.ToArray());
+                var photo = Guid.NewGuid();
+                await store.AddPhoto(photo, person, EventId, $"directory/photos/{EventId}/{photo}.webp", output, storage, default); fields = fields with { PhotoId = photo };
             }
             await store.Save(person, EventId, fields, default);
             if (i is 28 or 29) await store.Moderate(EventId, person, p.Id, "hide", "Synthetic moderation example", null, default);

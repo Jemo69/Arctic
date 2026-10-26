@@ -8,7 +8,7 @@ into.
 |---|---|
 | [`audit`](audit/README.md) | Audit logging. The trail is written by database triggers; this is the read side and the thing that tells a transaction who is acting. |
 | [`ui`](ui/README.md) | Shared design tokens and components, imported by relative path from all three Next.js apps — not published as a package. |
-| `directory` | Shared directory choices and profile validation (`MorganHacks.Directory.Contracts`). A leaf library with no project references or stores, used by application forms. |
+| `directory` | Directory contracts and validation (`MorganHacks.Directory.Contracts`), plus bounded photo processing (`MorganHacks.Directory.Images`). Both are leaf libraries with no stores; only the image library depends on SkiaSharp. |
 | `features` | Feature flags (`MorganHacks.Features`): one name per flag, read from `features.json` on every call, same string in every service and every frontend. |
 | `observability` | Correlation IDs, structured logging, Sentry redaction (`MorganHacks.Observability`). Used by every .NET service. |
 
