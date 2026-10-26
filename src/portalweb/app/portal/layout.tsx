@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { HACKER_PORTAL, HEIST_THEME, READING_MODE, isOn } from "@/lib/features";
+import { DARK_MODE, HACKER_PORTAL, HEIST_THEME, READING_MODE, isOn } from "@/lib/features";
 import { READING_MODE_COOKIE, initialReadingMode } from "../../../../libs/ui/reading-mode";
+import { THEME_COOKIE, parseTheme } from "../../../../libs/ui/theme";
 import { cookies } from "next/headers";
 import { ReadingToggle } from "../../components/reading-toggle";
+import { ThemeToggle } from "../../components/theme-toggle";
 import { HeistBackdrop } from "../../components/heist/backdrop";
 import { SignalPanel } from "../../components/heist/signal";
 import { Countdown } from "../../components/heist/countdown";
@@ -66,6 +68,12 @@ export default async function PortalLayout({
   // ancestor carrying `[data-reading="on"]`, and this frame is the ancestor of
   // everything the mode applies to.
   const reading = isOn(READING_MODE) ? initialReadingMode((await cookies()).get(READING_MODE_COOKIE)?.value) : undefined;
+
+  // The theme choice, for the control's three positions only. The palette
+  // itself was decided in app/layout.tsx and painted on the first byte, since
+  // every dark rule in tokens.css is written against `:root` and only the root
+  // layout renders <html>. `undefined` is drawn as "Auto".
+  const theme = isOn(DARK_MODE) ? parseTheme((await cookies()).get(THEME_COOKIE)?.value) : undefined;
 
   const heist = isOn(HEIST_THEME);
 
@@ -153,10 +161,23 @@ export default async function PortalLayout({
           // One box, so the theme's grid can put the controls in a single cell.
           <div className="heist-tools">
             {isOn(READING_MODE) && <ReadingToggle initial={reading} />}
+            {isOn(DARK_MODE) && <ThemeToggle initial={theme} />}
             <SignalPanel />
           </div>
         ) : (
           isOn(READING_MODE) && <ReadingToggle initial={reading} />
+        )}
+
+        {/*
+          The theme control, behind enable_dark_mode_feature, and off means no
+          control anywhere in the portal — the same bar reading mode is held to.
+
+          Beside the reading toggle because they answer the same kind of
+          question: how this page looks to the person reading it, rather than
+          anything it can do.
+        */}
+        {!heist && isOn(DARK_MODE) && (
+          <ThemeToggle initial={theme} />
         )}
       </header>
 

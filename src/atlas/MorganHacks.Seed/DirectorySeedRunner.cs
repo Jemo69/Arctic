@@ -45,7 +45,7 @@ public sealed class DirectorySeedRunner(NpgsqlDataSource db)
                 var answers = SeedRunner.Answers(i); answers["email"] = JsonSerializer.SerializeToElement(email);
                 answers["directory_skills"] = JsonSerializer.SerializeToElement(new[] { Catalogues.Skills[i % Catalogues.Skills.Length], "Python" }.Distinct().ToArray());
                 answers["directory_headline"] = JsonSerializer.SerializeToElement($"[Synthetic] Building useful things with new friends #{i}");
-                answers["directory_contactLinks"] = JsonSerializer.SerializeToElement(new[] { "github|mock-hacker-" + i });
+                answers["directory_contact_links"] = JsonSerializer.SerializeToElement(new[] { "github|mock-hacker-" + i });
                 answers["directory_pace"] = JsonSerializer.SerializeToElement(Catalogues.Paces[i % 3]);
                 var problems = SubmissionValidation.Check(version.Fields, answers); if (problems.Count > 0) throw new InvalidOperationException("Directory fixture form no longer matches its answers.");
                 var app = await new PostgresSubmissionStore(db).SubmitApplicationAsync(form, version, answers);
