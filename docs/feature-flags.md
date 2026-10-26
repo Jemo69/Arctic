@@ -12,7 +12,7 @@ One file per service, at the root of that service:
 | atlas | `src/atlas/MorganHacks.Api/features.json` | `enable_hacker_portal_feature` |
 | lark | `src/lark/MorganHacks.Lark/features.json` | nothing yet |
 | harbor | `src/harbor/MorganHacks.Harbor/features.json` | nothing yet |
-| portalweb | `src/portalweb/features.json` | `enable_hacker_portal_feature`, `enable_reading_mode_feature` |
+| portalweb | `src/portalweb/features.json` | `enable_hacker_portal_feature`, `enable_reading_mode_feature`, `enable_directory_feature`, `enable_heist_theme_feature` |
 | portaladmin | `src/portaladmin/features.json` | `enable_reading_mode_feature` |
 | portalforms | `src/portalforms/features.json` | `enable_reading_mode_feature` |
 

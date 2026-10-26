@@ -41,7 +41,7 @@ export function RsvpPanel({
   // The window has gone but the row has not been expired yet, so the status
   // line above still reads "confirm by". Said plainly rather than left to be
   // inferred from two buttons that are missing.
-  if(state.done&&state.message)return <section className="panel" role="status"><p>{state.message}</p><a href="/portal/directory/profile">Your directory profile</a></section>;
+  if(state.done&&state.message)return <section className="panel" role="status"><p>{state.message}</p><a href="/portal/directory?edit=1">Your directory profile</a></section>;
   if (!rsvp.open) {
     return rsvp.closedReason !== null && deadline !== null ? (
       <section className="panel" aria-label="Your spot">

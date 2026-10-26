@@ -32,6 +32,17 @@ export const siteConfig = {
   },
 
   /**
+   * When the event starts, for the portal's countdown.
+   *
+   * PLACEHOLDER: the asset kit says "April 2027" and nothing more specific has
+   * been published. Replace with the real opening time before the Heist theme
+   * ships; set it to null and the countdown does not render.
+   */
+  event: {
+    startIso: "2027-04-09T22:00:00Z" as string | null,
+  },
+
+  /**
    * The address an applicant is told to write to.
    *
    * info@ rather than the gmail that was here: it is routed by Cloudflare on

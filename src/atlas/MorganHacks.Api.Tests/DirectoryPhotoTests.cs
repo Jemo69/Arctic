@@ -30,3 +30,49 @@ public partial class DirectoryEndpointTests
         Assert.Equal(HttpStatusCode.NotFound, (await Send("GET", $"/portal/directory/photos/{id}", b.Cookie)).StatusCode);
     }
 }
+
+public partial class DirectoryEndpointTests
+{
+    [Fact]
+    public async Task Uploads_are_processed_without_replacing_the_current_photo_until_saved()
+    {
+        var hacker = await Hacker();
+        await Join(hacker.Cookie);
+        var original = Guid.NewGuid();
+        await Store.AddPhoto(original, hacker.Person, hacker.Event, "fixture/existing", [1, 2, 3], photos, default);
+        var profile = (await Store.Mine(hacker.Person, hacker.Event, default))!;
+        await Store.Save(hacker.Person, hacker.Event, profile.Fields with { PhotoId = original }, default);
+        var request = new HttpRequestMessage(HttpMethod.Post, "/portal/directory/profile/photo");
+        request.Headers.Add("Cookie", hacker.Cookie);
+        request.Content = new MultipartFormDataContent { { new ByteArrayContent(DirectoryImageFixtures.Png()), "file", "photo.png" } };
+        var response = await app.CreateClient(new() { HandleCookies = false }).SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var uploaded = (await Body(response)).GetProperty("photoId").GetGuid();
+        var row = await Store.FindPhoto(uploaded, default);
+        Assert.NotNull(row);
+        using var stored = await photos.Open(row.StorageKey, default);
+        using var image = SkiaSharp.SKBitmap.Decode(stored);
+        Assert.Equal(400, image.Width);
+        Assert.Equal(400, image.Height);
+        Assert.Equal(original, (await Store.Mine(hacker.Person, hacker.Event, default))!.Fields.PhotoId);
+        await using var count = db.DataSource.CreateCommand("SELECT count(*) FROM directory.photos WHERE person_id=@person");
+        count.Parameters.AddWithValue("person", hacker.Person);
+        Assert.Equal(2L, (long)(await count.ExecuteScalarAsync())!);
+        Assert.Equal(HttpStatusCode.OK, (await Send("GET", $"/portal/directory/photos/{original}", hacker.Cookie)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Send("DELETE", "/portal/directory/profile/photo", hacker.Cookie)).StatusCode);
+        Assert.Null((await Store.Mine(hacker.Person, hacker.Event, default))!.Fields.PhotoId);
+    }
+
+    [Fact]
+    public async Task Uploads_enforce_eligibility_and_archive_rules()
+    {
+        var ineligible = await Hacker("accepted");
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send("POST", "/portal/directory/profile/photo", ineligible.Cookie)).StatusCode);
+        var hacker = await Hacker();
+        await Join(hacker.Cookie);
+        await using var archive = db.DataSource.CreateCommand("UPDATE directory.settings SET archived_at=now() WHERE event_id=@event");
+        archive.Parameters.AddWithValue("event", hacker.Event);
+        await archive.ExecuteNonQueryAsync();
+        Assert.Equal(HttpStatusCode.Conflict, (await Send("POST", "/portal/directory/profile/photo", hacker.Cookie)).StatusCode);
+    }
+}

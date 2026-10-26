@@ -1,5 +1,5 @@
 import {apiFetch} from "@/lib/api";
-import {isOn} from "@/lib/features";
+import {HEIST_THEME,isOn} from "@/lib/features";
 import { Tabs } from "./tabs";
 
 /**
@@ -21,7 +21,7 @@ export default async function SignedInLayout({
   if(isOn("enable_directory_feature")){try{const response=await apiFetch("/portal/directory/status");if(response.ok)directoryEligible=(await response.json()).eligible===true}catch{}}
   return (
     <>
-      <Tabs directoryEligible={directoryEligible} />
+      <Tabs directoryEligible={directoryEligible} icons={isOn(HEIST_THEME)} />
       <main>{children}</main>
     </>
   );

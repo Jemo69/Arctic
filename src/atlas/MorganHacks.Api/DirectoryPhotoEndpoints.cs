@@ -6,16 +6,12 @@ using MorganHacks.Directory.Contracts;
 using MorganHacks.Directory.Data;
 using MorganHacks.Directory.Domain;
 using MorganHacks.Identity.Services;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Processing;
+using MorganHacks.Directory.Images;
 namespace MorganHacks.Api;
 
 public static partial class DirectoryEndpoints
 {
-    public const int PhotoMaxBytes = 5 * 1024 * 1024;
-    private static readonly SemaphoreSlim PhotoDecoders = new(2);
+    public const int PhotoMaxBytes = DirectoryPhotoProcessor.MaxBytes;
     static partial void MapDirectoryPhotos(RouteGroupBuilder portal)
     {
         portal.MapPost("/profile/photo", UploadPhoto).AddEndpointFilter(async (context, next) =>
@@ -28,24 +24,6 @@ public static partial class DirectoryEndpoints
         portal.MapDelete("/profile/photo", DetachPhoto);
         portal.MapGet("/photos/{photoId:guid}", ReadPhoto);
     }
-    public static async Task<byte[]> ProcessPhoto(byte[] bytes, CancellationToken ct)
-    {
-        var jpeg = bytes.Length >= 3 && bytes[0] == 255 && bytes[1] == 216 && bytes[2] == 255;
-        var png = bytes.Length >= 4 && bytes[0] == 137 && bytes[1] == 80 && bytes[2] == 78 && bytes[3] == 71;
-        var webp = bytes.Length >= 12 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8);
-        if (bytes.Length > PhotoMaxBytes || (!jpeg && !png && !webp)) throw new InvalidDataException("Choose a JPEG, PNG or WebP up to 5 MB.");
-        await PhotoDecoders.WaitAsync(ct);
-        try
-        {
-            var info = Image.Identify(bytes);
-            if (info.Width < 200 || info.Height < 200 || info.Width > 8000 || info.Height > 8000) throw new InvalidDataException("Each side must be between 200 and 8000 pixels.");
-            using var image = Image.Load(new DecoderOptions { MaxFrames = 1 }, bytes);
-            image.Mutate(x => x.AutoOrient().Resize(new ResizeOptions { Size = new Size(400, 400), Mode = ResizeMode.Crop, Position = AnchorPositionMode.Center }));
-            image.Metadata.ExifProfile = null; image.Metadata.IccProfile = null; image.Metadata.IptcProfile = null; image.Metadata.XmpProfile = null;
-            using var output = new MemoryStream(); await image.SaveAsync(output, new WebpEncoder { Quality = 82, SkipMetadata = true }, ct); return output.ToArray();
-        }
-        finally { PhotoDecoders.Release(); }
-    }
     private static async Task<IResult> UploadPhoto(HttpContext http, IApplicantPortalStore applicants, IDirectoryApplicantSource source, DirectoryStore store, IPhotoStorage storage, CancellationToken ct)
     {
         var e = await Event(http, applicants, source, ct); if (e is null) return Refused();
@@ -55,13 +33,17 @@ public static partial class DirectoryEndpoints
         {
             var form = await http.Request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = PhotoMaxBytes + 65536 }, ct);
             if (form.Files.Count != 1) return Results.BadRequest(new { error = "Choose one image file." });
-            var file = form.Files[0]; if (file.Length > PhotoMaxBytes) return Results.StatusCode(413);
-            using var input = new MemoryStream(); await file.CopyToAsync(input, ct);
-            var bytes = await ProcessPhoto(input.ToArray(), ct); var id = Guid.NewGuid(); var key = $"directory/photos/{e.Value}/{id}.webp";
+            var file = form.Files[0];
+            if (file.Length > PhotoMaxBytes) return Results.StatusCode(413);
+            using var input = new MemoryStream();
+            await file.CopyToAsync(input, ct);
+            var bytes = await DirectoryPhotoProcessor.ProcessAsync(input.ToArray(), ct);
+            var id = Guid.NewGuid();
+            var key = $"directory/photos/{e.Value}/{id}.webp";
             await store.AddPhoto(id, http.PersonId(), e.Value, key, bytes, storage, ct);
             return Results.Ok(new { photoId = id, previewUrl = PhotoUrl(id) });
         }
-        catch (Exception ex) when (ex is InvalidDataException or UnknownImageFormatException or InvalidImageContentException)
+        catch (InvalidDataException)
         { return Results.BadRequest(new { error = "Choose a valid JPEG, PNG or WebP up to 5 MB, with each side between 200 and 8000 pixels." }); }
     }
     private static async Task<IResult> DetachPhoto(HttpContext http, IApplicantPortalStore applicants, IDirectoryApplicantSource source, DirectoryStore store, CancellationToken ct)
