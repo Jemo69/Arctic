@@ -29,6 +29,15 @@ export const HACKER_PORTAL = "enable_hacker_portal_feature";
 export const READING_MODE = "enable_reading_mode_feature";
 
 /**
+ * The 2027 Heist look for the portal: navy and orange, code rain, the vault.
+ *
+ * Off means the frame carries no `heist` class, none of the Heist components
+ * render and app/portal/heist.css matches nothing, so the portal is exactly the
+ * calm one it was before.
+ */
+export const HEIST_THEME = "enable_heist_theme_feature";
+
+/**
  * Dark mode, and the control that chooses it.
  *
  * Off pins `data-theme="light"` exactly as the three layouts did before this

@@ -1,3 +1,5 @@
+import {isOn} from "@/lib/features";
+import {JoinDirectoryCard} from "./directory/join-card";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentPortal, readableDate } from "@/lib/api";
@@ -67,10 +69,12 @@ export default async function Status() {
         it in and the same one the API says the day in.
       */}
       <RsvpPanel
+        directoryEnabled={isOn("enable_directory_feature")}
         rsvp={application.rsvp}
         deadline={readableTime(application.rsvp.deadline)}
       />
 
+      {isOn("enable_directory_feature")?<JoinDirectoryCard/>:null}
       <section className="panel">
         <h2>Your details</h2>
         <p className="quiet">

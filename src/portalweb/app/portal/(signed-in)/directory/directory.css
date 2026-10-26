@@ -1,0 +1,148 @@
+.directory { max-width: 1100px; margin: auto; }
+.directory-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin:1.5rem 0; }
+.directory-field { display:grid;gap:.4rem; }
+.directory-optin input { width:auto; }
+.directory-tags { list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:.4rem; }.directory-tags li { border:1px solid currentColor;border-radius:1rem;padding:.2rem .6rem;font-size:.8rem; }
+.hacker-card { border:1px solid currentColor;border-radius:.8rem;padding:1.25rem;height:100%;box-sizing:border-box;overflow-wrap:anywhere; }
+.hacker-card h2 { margin:.8rem 0 .4rem; }.hacker-card p { margin:.6rem 0; }.hacker-card img { border-radius:50%;object-fit:cover; }
+.hacker-avatar { width:80px;height:80px;border-radius:50%;display:grid;place-items:center;border:1px solid currentColor;font-size:2rem; }
+.directory-card-button { background:none;color:inherit;border:0;text-align:left;padding:0;cursor:pointer;font:inherit; }
+.directory-card-button:focus-visible { outline:3px solid currentColor;outline-offset:4px; }
+.directory-error { color:var(--stop);font-weight:600;display:block; }
+.directory-optin { display:flex;gap:.6rem;align-items:center; }
+.directory-sheet { margin:0 0 0 auto;height:100dvh;max-height:100dvh;width:min(520px,100%);max-width:100%;box-sizing:border-box;padding:2rem;background:var(--raised);color:inherit;border:0;overflow:auto; }
+.directory-sheet::backdrop { background:rgb(0 0 0 / .5); }.directory-sheet a { overflow-wrap:anywhere; }.directory-sheet dt { font-weight:600; }.directory-sheet dd { margin:0 0 1rem;white-space:pre-wrap; }.directory-skeleton { min-height:200px;opacity:.4; }
+@media(max-width:700px){.directory-sheet { width:100%; }}
+@media(prefers-reduced-motion:reduce){.directory * { animation:none!important;transition:none!important; }}
+
+.directory-suggestions { display:flex;flex-wrap:wrap;gap:.5rem; }
+.directory-suggestions button { width:auto;min-height:36px;border:1px solid var(--line);border-radius:999px;background:var(--raised);color:var(--ink);padding:.45rem .75rem;font:inherit;font-size:.85rem;text-align:left;white-space:normal; }
+.directory-suggestions button:not(:disabled):hover { border-color:var(--ink); }
+.directory-suggestions button:focus-visible { outline:2px solid var(--ink);outline-offset:3px; }
+.directory-suggestions button:disabled { opacity:.5;cursor:default; }
+
+/* Search and filters: one bar, filters as pills that open small lists. */
+.visually-hidden { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0; }
+.directory-bar { display:grid;gap:.75rem;margin:1.25rem 0 0; }
+.directory-search { display:flex;align-items:center;gap:.6rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--raised);padding:0 .8rem;margin:0;color:var(--muted); }
+.directory-search input { border:0;background:transparent;padding:.7rem 0;min-width:0;flex:1; }
+.directory-search input:focus { outline:none; }
+.directory-search:focus-within { outline:2px solid var(--focus);outline-offset:2px; }
+.directory-search kbd { font-family:var(--mono),monospace;font-size:.75rem;border:1px solid var(--line);border-radius:4px;padding:.05rem .4rem; }
+.directory-chips { display:flex;flex-wrap:wrap;align-items:center;gap:.5rem; }
+.directory-count { margin-left:auto;color:var(--muted);font-size:.85rem; }
+.filter-menu { position:relative; }
+.filter-chip { display:inline-flex;align-items:center;gap:.45rem;padding:.45rem .8rem;border-radius:999px;font-size:.9rem; }
+.filter-chip span { color:var(--muted); }
+.filter-chip[data-active] { border-color:var(--accent); }
+.filter-chip[data-active] span { color:var(--ink); }
+.filter-pop { position:absolute;left:0;top:calc(100% + 6px);z-index:30;min-width:220px;max-width:280px;display:grid;gap:.5rem;padding:.6rem;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--raised);box-shadow:0 12px 32px rgb(0 0 0 / .25); }
+.filter-options { display:grid;gap:.1rem;max-height:240px;overflow:auto; }
+.filter-option { display:flex;align-items:center;gap:.55rem;margin:0;padding:.4rem .45rem;border-radius:6px;color:var(--ink);font-size:.9rem;cursor:pointer; }
+.filter-option:hover { background:var(--sunken); }
+.filter-option input { width:auto;margin:0; }
+.filter-find { font-size:.9rem;padding:.45rem .6rem; }
+
+/* Edit profile modal (materialize.tsx). One value, --form (0 to 1), drives the pane's glass and the
+   page blur, and --front unmasks the form right behind the glyph wave, so nothing lags behind the rest. */
+.materialize { position:relative; }
+.materialize__glyphs { position:absolute;top:0;left:0;width:100%;pointer-events:none;z-index:1; }
+.materialize:not([data-formed]) > .materialize__body { -webkit-mask-image:linear-gradient(to bottom,#000 calc(var(--front,0px) - 110px),transparent var(--front,0px));mask-image:linear-gradient(to bottom,#000 calc(var(--front,0px) - 110px),transparent var(--front,0px)); }
+.profile-modal { --form:0;width:min(1040px,calc(100% - 2rem));max-width:none;max-height:calc(100dvh - 2rem);padding:0;border:0;background:transparent;color:inherit;overflow:auto; }
+.profile-modal::backdrop { background:rgb(0 0 0 / calc(.1 + var(--form,1) * .25));backdrop-filter:blur(calc(var(--form,1) * 12px)) saturate(calc(1 + var(--form,1) * .2)); }
+.profile-modal__pane { padding:1.5rem;border:1px solid rgb(from var(--line) r g b / calc(var(--form,1) * 1));border-radius:var(--radius-lg);background:rgb(from var(--raised) r g b / calc(var(--form,1) * 1));backdrop-filter:blur(calc(var(--form,1) * 16px)) saturate(calc(1 + var(--form,1) * .4));box-shadow:inset 0 1px 0 rgb(255 255 255 / calc(var(--form,1) * .08)),0 24px 60px rgb(0 0 0 / calc(var(--form,1) * .35)); }
+.profile-modal__head { display:flex;justify-content:space-between;align-items:start;gap:1rem; }.profile-modal__head h2 { margin:0; }
+.profile-modal__close { width:auto;display:grid;place-items:center;padding:.5rem;border-radius:999px; }
+@media(max-width:700px){.profile-modal { width:100%;max-height:100dvh;margin:0; }.profile-modal__pane { border-radius:0;min-height:100dvh;box-sizing:border-box;padding:1rem; }}
+
+/* Your own card (SelfCard): one pill top right with your status and the Edit action. */
+.directory-self { position:relative;display:block;text-decoration:none; }
+.directory-self__badge { position:absolute;top:.6rem;right:.6rem;display:inline-flex;align-items:center;gap:.4rem;padding:.2rem .2rem .2rem .55rem;border-radius:999px;background:var(--raised);border:1px solid var(--line);font-size:.75rem; }
+.directory-self__badge i { width:.5rem;height:.5rem;border-radius:50%;background:var(--muted); }
+.directory-self[data-state="live"] .directory-self__badge i { background:#3ddc84;box-shadow:0 0 0 3px rgb(61 220 132 / .2); }
+.directory-self[data-state="hidden"] .directory-self__badge i { background:var(--stop); }
+.directory-self__edit { display:inline-flex;align-items:center;gap:.3rem;margin-left:.15rem;padding:.2rem .55rem;border-radius:999px;background:var(--ink);color:var(--raised);font-weight:600;transition:transform .2s ease; }
+.directory-self:hover .directory-self__edit,.directory-self:focus-visible .directory-self__edit { transform:translateX(-2px); }
+.directory-self__empty { display:grid;place-items:center;align-content:center;text-align:center;border-style:dashed;min-height:240px; }
+
+/* Photo-forward cards (Slack-style) in the grid and the editor preview: the photo fills the top,
+   headline, skills and pace move to the profile sheet. The sheet keeps the full card. */
+.directory-grid { grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); }
+:is(.directory-grid,.directory-editor aside) .hacker-card { padding:0 0 1rem;overflow:hidden; }
+:is(.directory-grid,.directory-editor aside) .hacker-card > * { margin-inline:1rem; }
+:is(.directory-grid,.directory-editor aside) .hacker-card .hacker-card__photo { display:block;width:auto;height:auto;margin:0;padding:0;aspect-ratio:1;background:none; }
+:is(.directory-grid,.directory-editor aside) .hacker-card__photo :is(img,.hacker-avatar) { width:100%;height:100%;border:0;border-radius:0;display:grid;place-items:center;object-position:center 25%;font-size:3.5rem; }
+:where(.directory-grid,.directory-editor aside) .hacker-avatar { background:var(--line); }
+:is(.directory-grid,.directory-editor aside) .hacker-card :is(.hacker-card__headline,.quiet) { display:none; }
+/* Two skills stay on the card: the directory is for matching skills, so they must not cost a click. */
+:is(.directory-grid,.directory-editor aside) .hacker-card .directory-tags { margin-block:.5rem 0; }
+/* Phones: two columns, or 24 full-width squares are a very long scroll. Specific enough to beat the Heist grid. */
+@media(max-width:700px){.portal .directory .directory-grid { grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem; }
+ .portal .directory-grid .hacker-card > * { margin-inline:.6rem; }.portal .directory-grid .hacker-card h2 { font-size:1rem; }.portal .directory-grid .hacker-card p { font-size:.75rem; }
+ .portal .directory-grid .directory-tags li { font-size:.68rem;padding:.1rem .4rem; }
+ .portal .directory-grid .hacker-card p { letter-spacing:.01em; }
+ /* The orange ring already says it is you; the tag would sit under the Live/Edit pill. */
+ .portal .directory-self .hacker-card::before { display:none; }.directory-self__badge { top:.4rem;right:.4rem; }}
+.heist :is(.directory-grid,.directory-editor aside) .hacker-card::before { position:absolute;z-index:1;top:.5rem;left:.6rem;padding:.1rem .35rem;background:rgb(7 26 43 / .8); }
+
+/* Profile sheet (Slack-style): a 300px photo first, then only the details they filled in. */
+.sheet-head { display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem; }
+.sheet-kicker { font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted); }
+.sheet-photo { display:block;box-sizing:border-box;width:min(300px,100%);aspect-ratio:1;border-radius:var(--radius-lg);overflow:hidden; }
+.sheet-photo :is(img,.hacker-avatar) { width:100%;height:100%;display:grid;place-items:center;object-fit:cover;object-position:center 25%;border:0;border-radius:inherit;background:var(--line);font-size:5rem; }
+.sheet h2 { margin:1.1rem 0 .2rem; }
+.sheet-meta { margin:0;color:var(--muted); }
+.sheet .hacker-card__status { display:inline-block;margin:.8rem 0 0;font-size:.85rem; }
+.sheet-headline { margin:1rem 0 0;font-size:1.05rem; }
+.sheet-facts { display:grid;gap:1rem;margin:1.5rem 0;padding-top:1.25rem;border-top:1px solid var(--line); }
+.sheet-facts dd { margin:.3rem 0 0; }.sheet-facts .directory-tags { margin:0; }
+.sheet-section { margin:0 0 .6rem;font-size:1rem; }
+.sheet-contacts { display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem; }.sheet-contacts + [role=status] { margin:.4rem 0 0;font-size:.8rem; }.sheet-contacts + [role=status]:empty { display:none; }
+.sheet-contacts :is(a,button) { display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border-radius:999px; }
+
+/* Profile editor: a rail (live card, photo, visibility) and two field columns, sized to fit one screen. */
+.profile-modal { width:min(1180px,calc(100% - 2rem)); }
+.directory-editor { display:block;margin-top:1rem; }
+.editor-body { border:0;padding:0;margin:0;min-width:0;display:grid;grid-template-columns:220px minmax(0,1fr) minmax(0,1fr);gap:1.75rem; }
+.editor-rail,.editor-col { display:grid;gap:.85rem;align-content:start;min-width:0; }
+.editor-rail { gap:.6rem; }
+.editor-preview { position:relative; }
+.editor-photo-button { position:absolute;top:.6rem;right:.6rem;margin:0;padding:.3rem .7rem;border:1px solid var(--line);border-radius:999px;background:var(--raised);color:var(--ink);font-size:.75rem;cursor:pointer; }
+.editor-photo-button:focus-within { outline:2px solid currentColor;outline-offset:2px; }
+.editor-hint { margin:0;font-size:.8rem; }
+.editor-row { display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem; }
+.directory-editor .directory-field { gap:.3rem; }
+.directory-editor .directory-field label,.editor-group legend { margin:0;font-size:.8rem; }
+.directory-editor :is(input:not([type=checkbox],[type=radio],[type=range]),select) { padding:.45rem .6rem; }
+.directory-editor .directory-error:empty { display:none; }
+.editor-group { border:0;padding:0;margin:0;min-width:0;display:grid;gap:.45rem; }
+.editor-group legend { padding:0;margin-bottom:.45rem;color:var(--muted);font-weight:500; }
+.editor-count { justify-self:end;font-size:.75rem;color:var(--muted); }
+.choice-chips,.editor-tags { display:flex;flex-wrap:wrap;gap:.4rem;align-items:center; }
+.choice-chips label { position:relative;display:inline-flex;align-items:center;margin:0;padding:.35rem .75rem;border:1px solid var(--line);border-radius:999px;font-size:.85rem;color:var(--ink);cursor:pointer; }
+.choice-chips input { position:absolute;opacity:0;width:1px;height:1px;pointer-events:none; }
+.choice-chips label:has(:checked) { border-color:var(--ink);background:var(--ink);color:var(--raised); }
+.choice-chips label:has(:focus-visible) { outline:2px solid currentColor;outline-offset:2px; }
+.choice-chips label:has(:disabled) { opacity:.45;cursor:default; }
+.editor-tag { display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .7rem;border-radius:999px;font-size:.85rem; }
+.editor-tag span { color:var(--muted); }
+.editor-contact { display:grid;grid-template-columns:118px minmax(0,1fr) auto;gap:.4rem; }
+.editor-remove { padding:.3rem .75rem; }
+.editor-foot { display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--line); }
+.editor-foot p { margin:0;font-size:.85rem; }
+@media(max-width:960px){.editor-body { grid-template-columns:200px minmax(0,1fr); }.editor-body > .editor-col:last-child { grid-column:2; }}
+@media(max-width:700px){.editor-body { grid-template-columns:1fr; }.editor-body > .editor-col:last-child { grid-column:auto; }.editor-rail { max-width:240px; }}
+
+/* Photo crop (photo-crop.tsx): a 300px square you drag the photo around in. */
+.photo-crop { padding:1.5rem;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--raised);color:inherit; }
+.photo-crop::backdrop { background:rgb(0 0 0 / .55); }
+.photo-crop h2 { margin:0 0 .2rem; }.photo-crop .quiet { margin:0; }
+.photo-crop__view { position:relative;overflow:hidden;margin:1rem 0;border-radius:var(--radius);background:#000;cursor:grab;touch-action:none;user-select:none; }
+.photo-crop__view:active { cursor:grabbing; }
+.photo-crop__view img { position:absolute;top:0;left:0;max-width:none;pointer-events:none; }
+.photo-crop__view::after { content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px rgb(255 255 255 / .3);background:linear-gradient(90deg,transparent 33.2%,rgb(255 255 255 / .18) 33.3% 33.5%,transparent 33.6% 66.5%,rgb(255 255 255 / .18) 66.6% 66.8%,transparent 66.9%),linear-gradient(transparent 33.2%,rgb(255 255 255 / .18) 33.3% 33.5%,transparent 33.6% 66.5%,rgb(255 255 255 / .18) 66.6% 66.8%,transparent 66.9%); }
+.photo-crop__zoom { display:flex;align-items:center;gap:.75rem;margin:0; }.photo-crop__zoom input { flex:1;padding:0; }
+.photo-crop__actions { display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem; }.photo-crop__actions button { width:auto; }
+.directory-editor .directory-suggestions { gap:.35rem; }
+.directory-editor .directory-suggestions button { min-height:0;padding:.25rem .6rem;font-size:.75rem; }
+.editor-tags .filter-chip span { display:none; }

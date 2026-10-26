@@ -2,5 +2,7 @@
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../MorganHacks.Applications/MorganHacks.Applications.csproj" />
+    <ProjectReference Include="../MorganHacks.Directory/MorganHacks.Directory.csproj" />
+    <ProjectReference Include="../../../libs/directory/MorganHacks.Directory.Images/MorganHacks.Directory.Images.csproj" />
   </ItemGroup>
 </Project>

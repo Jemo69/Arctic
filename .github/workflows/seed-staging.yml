@@ -49,8 +49,11 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Build seed image
         run: |
-          az acr build --registry "$REGISTRY_NAME" --image "hacker-seed:$GITHUB_SHA" \
-            --file src/atlas/Dockerfile.seed --platform linux/amd64 . --no-logs
+          az acr login --name "$REGISTRY_NAME"
+          server="$(az acr show --name "$REGISTRY_NAME" --query loginServer --output tsv)"
+          docker build \
+            --file src/atlas/Dockerfile.seed --platform linux/amd64 --tag "$server/hacker-seed:$GITHUB_SHA" .
+          docker push "$server/hacker-seed:$GITHUB_SHA"
       - name: Configure staging job
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}

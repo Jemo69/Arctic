@@ -12,6 +12,7 @@ WORKDIR /src
 COPY src/atlas/MorganHacks.Api/MorganHacks.Api.csproj                 src/atlas/MorganHacks.Api/
 COPY src/atlas/MorganHacks.Identity/MorganHacks.Identity.csproj       src/atlas/MorganHacks.Identity/
 COPY src/atlas/MorganHacks.Applications/MorganHacks.Applications.csproj src/atlas/MorganHacks.Applications/
+COPY src/atlas/MorganHacks.Directory/MorganHacks.Directory.csproj src/atlas/MorganHacks.Directory/
 COPY libs/directory/MorganHacks.Directory.Contracts/MorganHacks.Directory.Contracts.csproj \
      libs/directory/MorganHacks.Directory.Contracts/
 COPY src/atlas/MorganHacks.Profiles/MorganHacks.Profiles.csproj       src/atlas/MorganHacks.Profiles/
@@ -23,6 +24,7 @@ COPY libs/audit/MorganHacks.Audit/MorganHacks.Audit.csproj \
      libs/audit/MorganHacks.Audit/
 COPY libs/features/MorganHacks.Features/MorganHacks.Features.csproj \
      libs/features/MorganHacks.Features/
+COPY libs/directory/MorganHacks.Directory.Images/MorganHacks.Directory.Images.csproj libs/directory/MorganHacks.Directory.Images/
 COPY global.json ./
 COPY src/atlas/Directory.Build.props src/atlas/
 COPY src/lark/Directory.Build.props  src/lark/
