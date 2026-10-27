@@ -81,6 +81,41 @@
   --scan-plate: #ffffff;
   --scan-ink:   #14161a;
 
+  /* The ground the MorganHacks mark is drawn for, for the same reason and with
+   * the same exemption from the theme.
+   *
+   * brands/morganhacks.png is a navy wordmark and a navy-and-gold bear on an
+   * opaque white ground — RGB with no alpha channel, so there is no
+   * transparency to let a dark page show through, and nothing to recolour.
+   * Dropped onto the dark console it is a white rectangle, which is what kept
+   * all three apps pinned to light: the layout comments called the mark out by
+   * name as the thing blocking dark mode.
+   *
+   * A plate is the answer print has used for this for decades. The rectangle
+   * is already there whatever we do; giving it padding and a radius is the
+   * difference between a mark sitting on its own ground on purpose and one
+   * that looks clipped. The alternative is recolouring somebody else's
+   * trademark, which is not ours to do.
+   *
+   * Deliberately absent from both dark blocks below. A plate that went dark
+   * would be a navy mark on a dark ground, which is the problem it exists to
+   * solve. */
+  --brand-plate: #ffffff;
+
+  /* Whether the plate is showing, as two values the mark's own rule can read
+   * without repeating the theme condition.
+   *
+   * The condition is an attribute in one case and a media query in the other,
+   * so expressing it at each of the three places the mark renders would mean
+   * six blocks in three stylesheets. These two carry it instead: the mark's
+   * rule is one line, and the switch lives here with the rest of the palette.
+   *
+   * `transparent` and `0px` rather than unset, so the light rule draws nothing
+   * at all rather than drawing a plate the colour of the page — which would
+   * come out wrong the moment the mark sat on anything but --paper. */
+  --brand-plate-ground: transparent;
+  --brand-plate-inset:  0px;
+
   --display: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
   --body:    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono:    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -134,6 +169,10 @@
     --stop-soft: #2d1519;
 
     --focus: #8db9e6;
+
+    /* The mark gets its plate. See --brand-plate above. */
+    --brand-plate-ground: var(--brand-plate);
+    --brand-plate-inset:  6px;
   }
 }
 
@@ -159,10 +198,41 @@
   --stop-soft: #2d1519;
 
   --focus: #8db9e6;
+
+  /* The mark gets its plate. See --brand-plate above. */
+  --brand-plate-ground: var(--brand-plate);
+  --brand-plate-inset:  6px;
 }
 
+/*
+ * Where the keyboard is.
+ *
+ * This rule used to be `outline: none`, which is the one declaration in these
+ * files that took something away and put nothing back. Nothing else drew a
+ * focus ring — not the buttons, not the fields, not the links, in either app —
+ * so every control in both portals was focusable and none of them looked it.
+ * A person who reaches for Tab got a cursor they cannot see, which on the
+ * review queue means tabbing blind through a screen that decides whether
+ * somebody is coming to the event.
+ *
+ * :focus-visible and not :focus, so the ring belongs to the keyboard. A mouse
+ * click does not raise one — which is what the old rule was really reaching
+ * for, and is already this selector's own behaviour, without the cost.
+ *
+ * An outline rather than a box-shadow or a border. An outline is drawn outside
+ * the box and is not in the layout, so it cannot move a control by a pixel the
+ * way a border swap does, and it cannot be clipped off by a parent's
+ * overflow the way a shadow is — which matters here, because these controls
+ * sit in scroll containers, sticky toolbars and tables. The offset is what
+ * keeps the ring legible on the filled accent button, where a ring drawn flush
+ * against the edge would read as part of the fill.
+ *
+ * --focus is the accent in both themes, so the ring turns with the palette and
+ * lands at better than 3:1 against every surface in this file.
+ */
 *:focus-visible {
-  outline: none;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

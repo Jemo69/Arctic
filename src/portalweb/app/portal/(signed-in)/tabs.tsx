@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "../actions";
+import { TAB_ICONS } from "../../../components/heist/icons";
+import { MarkerLoop } from "../../../components/heist/marker";
 
 const tabs = [
   { href: "/portal", label: "Status" },
@@ -37,11 +39,22 @@ const tabs = [
  * the marking; the underline is the visual echo of it, not the other way
  * round, so a screen reader gets the same answer as a sighted reader.
  */
-export function Tabs() {
+export function Tabs({directoryEligible=false,icons=false}:{directoryEligible?:boolean;icons?:boolean}) {
   const pathname = usePathname();
+  // The Heist theme draws a kit icon before each label. Decorative: the label
+  // already says where the tab goes.
+  const icon = (href: string) =>
+    icons ? (
+      <svg width="17" height="17" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d={TAB_ICONS[href]} />
+      </svg>
+    ) : null;
+  // Keyed by the tab, so switching tabs mounts a fresh loop and it draws itself in.
+  const marker = (href: string, active: boolean) => (icons && active ? <MarkerLoop key={href} id={href} /> : null);
 
   return (
     <nav className="portal__tabs" aria-label="Your application">
+      {directoryEligible?<Link href="/portal/directory" aria-current={pathname.startsWith("/portal/directory")?"page":undefined}>{icon("/portal/directory")}Directory{marker("/portal/directory",pathname.startsWith("/portal/directory"))}</Link>:null}
       {tabs.map(({ href, label }) => (
         <Link
           key={href}
@@ -50,7 +63,9 @@ export function Tabs() {
           // startsWith test would light up "Status" on all three.
           aria-current={pathname === href ? "page" : undefined}
         >
+          {icon(href)}
           {label}
+          {marker(href, pathname === href)}
         </Link>
       ))}
 
